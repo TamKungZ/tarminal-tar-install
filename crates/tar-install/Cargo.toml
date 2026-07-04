@@ -1,0 +1,31 @@
+[package]
+name = "tar-install"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Library core for safely installing Linux app tarballs into desktop-friendly locations."
+
+[lib]
+name = "tar_install"
+path = "src/lib.rs"
+
+# Tiny helper binary for users who try to run `tar-install` directly.
+# Real CLI frontend lives in the `tarminal` package.
+[[bin]]
+name = "tar-install"
+path = "src/bin/tar-install.rs"
+
+[dependencies]
+anyhow.workspace = true
+bzip2.workspace = true
+flate2.workspace = true
+regex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml.workspace = true
+sha2.workspace = true
+tar.workspace = true
+tempfile.workspace = true
+walkdir.workspace = true
+xz2.workspace = true

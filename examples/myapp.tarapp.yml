@@ -1,0 +1,10 @@
+id: com.example.myapp
+name: My App
+version: 1.0.0
+exec: MyApp
+command: myapp
+icon: assets/icon.png
+desktop:
+  categories:
+    - Utility
+  terminal: false
