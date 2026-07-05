@@ -45,8 +45,8 @@ jobs:
         run: |
           set -eux
 
-          cargo build --release -p tar-install --bin tar-install
-          cargo build --release -p tarminal
+          cargo build --release --locked -p tar-install --bin tar-install
+          cargo build --release --locked -p tarminal
 
           strip -s target/release/tar-install
           strip -s target/release/tarminal
