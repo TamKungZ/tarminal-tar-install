@@ -496,24 +496,33 @@ jobs:
         env:
           VOID_XBPS_PRIVATE_KEY: ${{ secrets.VOID_XBPS_PRIVATE_KEY }}
         run: |
-          set -euo pipefail
+          set -eu
+
           if [ -z "${VOID_XBPS_PRIVATE_KEY:-}" ]; then
             echo "VOID_XBPS_PRIVATE_KEY secret is required to sign the Void repo."
             exit 1
           fi
+
           cd "$GITHUB_WORKSPACE"
+
           mkdir -p dist-repo/xbps/x86_64
           cp xbps-out/*.xbps dist-repo/xbps/x86_64/
-          printf '%s' "$VOID_XBPS_PRIVATE_KEY" > /tmp/void-repo.pem
+
+          printf '%s\n' "$VOID_XBPS_PRIVATE_KEY" > /tmp/void-repo.pem
           chmod 600 /tmp/void-repo.pem
+
+          openssl rsa -in /tmp/void-repo.pem -check -noout
+
           xbps-rindex -a dist-repo/xbps/x86_64/*.xbps
+
           xbps-rindex \
-            --sign \
-            --signedby "TamKungZ <release@tamkungz.me>" \
             --privkey /tmp/void-repo.pem \
-            dist-repo/xbps/x86_64
+            --signedby "TamKungZ <release@tamkungz.me>" \
+            -s dist-repo/xbps/x86_64
+
           openssl rsa -in /tmp/void-repo.pem -pubout -out dist-repo/xbps/tamkungz-void.pem.pub
-          shred -u /tmp/void-repo.pem
+
+          rm -f /tmp/void-repo.pem
 
       - name: Prepare plain dist copies
         run: |
