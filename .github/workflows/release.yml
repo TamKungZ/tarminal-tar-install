@@ -1,6 +1,6 @@
 name: Release
 
-on:
+"on":
   push:
     tags:
       - "v*.*.*"
@@ -12,7 +12,7 @@ permissions:
 jobs:
   release-linux-x64:
     name: Release Linux x64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout
@@ -25,8 +25,16 @@ jobs:
 
       - name: Install packaging tools
         run: |
+          set -eux
           sudo apt-get update
-          sudo apt-get install -y rpm gnupg
+          sudo apt-get install -y \
+            apt-utils \
+            createrepo-c \
+            dpkg-dev \
+            git \
+            gnupg \
+            rpm \
+            xz-utils
           cargo install cargo-deb cargo-generate-rpm
 
       - name: Build release binaries
@@ -46,6 +54,14 @@ jobs:
           cargo deb -p tar-install
           cargo deb -p tarminal
 
+          ls -lah target/debian
+
+          for deb in target/debian/*.deb; do
+            echo "== Inspecting $deb =="
+            dpkg -I "$deb"
+            dpkg -c "$deb"
+          done
+
       - name: Build rpm packages
         run: |
           set -eux
@@ -53,39 +69,76 @@ jobs:
           cargo generate-rpm -p crates/tar-install
           cargo generate-rpm -p crates/tarminal
 
+          ls -lah target/generate-rpm
+
+          for rpm in target/generate-rpm/*.rpm; do
+            echo "== Inspecting $rpm =="
+            rpm -qpi "$rpm"
+            rpm -qpl "$rpm"
+            rpm -qpR "$rpm"
+          done
+
+      - name: Smoke test deb install
+        run: |
+          set -eux
+
+          sudo apt install -y ./target/debian/tar-install_*.deb ./target/debian/tarminal_*.deb
+
+          which tar-install
+          which tarminal
+
+          tar-install || true
+          tarminal --help
+          tarminal list || true
+
+          sudo apt remove -y tarminal tar-install
+
       - name: Prepare dist
         run: |
           set -eux
 
           mkdir -p dist
 
-          cp target/release/tar-install dist/tar-install-linux-x64
-          cp target/release/tarminal dist/tarminal-linux-x64
+          cp target/release/tar-install dist/tar-install-linux-x86_64-gnu
+          cp target/release/tarminal dist/tarminal-linux-x86_64-gnu
 
           cp target/debian/*.deb dist/
           cp target/generate-rpm/*.rpm dist/
 
-          tar -C dist -cJf dist/tar-install-linux-x64.tar.xz tar-install-linux-x64
-          tar -C dist -cJf dist/tarminal-linux-x64.tar.xz tarminal-linux-x64
+          tar -C dist -cJf dist/tar-install-linux-x86_64-gnu.tar.xz tar-install-linux-x86_64-gnu
+          tar -C dist -cJf dist/tarminal-linux-x86_64-gnu.tar.xz tarminal-linux-x86_64-gnu
 
           cd dist
           sha256sum * > SHA256SUMS
 
       - name: Import GPG key
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
         env:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: |
-          set -eux
+          set -euo pipefail
+
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY secret is required for release signing and package repo publishing."
+            exit 1
+          fi
+
           printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+          GPG_FINGERPRINT="$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')"
+
+          if [ -z "$GPG_FINGERPRINT" ]; then
+            echo "Could not detect GPG fingerprint."
+            exit 1
+          fi
+
+          echo "GPG_FINGERPRINT=$GPG_FINGERPRINT" >> "$GITHUB_ENV"
           gpg --list-secret-keys --keyid-format LONG
 
-      - name: GPG sign artifacts
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+      - name: GPG sign release artifacts
         env:
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         run: |
-          set -eux
+          set -euo pipefail
 
           for file in dist/*; do
             if [ -f "$file" ] && [ "${file##*.}" != "asc" ]; then
@@ -93,18 +146,19 @@ jobs:
                 gpg --batch --yes \
                   --pinentry-mode loopback \
                   --passphrase "$GPG_PASSPHRASE" \
+                  --default-key "$GPG_FINGERPRINT" \
                   --armor \
                   --detach-sign "$file"
               else
                 gpg --batch --yes \
+                  --default-key "$GPG_FINGERPRINT" \
                   --armor \
                   --detach-sign "$file"
               fi
             fi
           done
 
-      - name: Verify signatures
-        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+      - name: Verify GPG signatures
         run: |
           set -eux
 
@@ -113,10 +167,128 @@ jobs:
             gpg --verify "$sig" "$file"
           done
 
+      - name: Publish package repository
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          PACKAGES_REPO_TOKEN: ${{ secrets.PACKAGES_REPO_TOKEN }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PACKAGES_REPO_TOKEN:-}" ]; then
+            echo "PACKAGES_REPO_TOKEN is missing; skipping packages.tamkungz.me publish."
+            exit 0
+          fi
+
+          WORK_DIR="$PWD"
+          SITE_DIR="$WORK_DIR/packages-site"
+          REPO_URL="https://x-access-token:${PACKAGES_REPO_TOKEN}@github.com/TamKungZ/packages.tamkungz.me.git"
+
+          git clone --depth 1 "$REPO_URL" "$SITE_DIR"
+
+          cd "$SITE_DIR"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          echo "packages.tamkungz.me" > CNAME
+          touch .nojekyll
+
+          rm -rf tarminal/apt tarminal/rpm
+
+          mkdir -p tarminal
+          gpg --armor --export "$GPG_FINGERPRINT" > tarminal/gpg.key
+
+          mkdir -p tarminal/apt/pool/main/t/tar-install
+          mkdir -p tarminal/apt/pool/main/t/tarminal
+          mkdir -p tarminal/apt/dists/stable/main/binary-amd64
+
+          cp "$WORK_DIR"/target/debian/tar-install_*.deb tarminal/apt/pool/main/t/tar-install/
+          cp "$WORK_DIR"/target/debian/tarminal_*.deb tarminal/apt/pool/main/t/tarminal/
+
+          cd "$SITE_DIR/tarminal/apt"
+
+          dpkg-scanpackages --arch amd64 pool > dists/stable/main/binary-amd64/Packages
+          gzip -9fk dists/stable/main/binary-amd64/Packages
+
+          apt-ftparchive \
+            -o APT::FTPArchive::Release::Origin="TamKungZ_" \
+            -o APT::FTPArchive::Release::Label="TamKungZ_ Packages" \
+            -o APT::FTPArchive::Release::Suite="stable" \
+            -o APT::FTPArchive::Release::Codename="stable" \
+            -o APT::FTPArchive::Release::Architectures="amd64" \
+            -o APT::FTPArchive::Release::Components="main" \
+            -o APT::FTPArchive::Release::Description="TamKungZ_ Tarminal APT Repository" \
+            release dists/stable > dists/stable/Release
+
+          if [ -n "${GPG_PASSPHRASE:-}" ]; then
+            gpg --batch --yes \
+              --pinentry-mode loopback \
+              --passphrase "$GPG_PASSPHRASE" \
+              --default-key "$GPG_FINGERPRINT" \
+              --clearsign \
+              -o dists/stable/InRelease dists/stable/Release
+
+            gpg --batch --yes \
+              --pinentry-mode loopback \
+              --passphrase "$GPG_PASSPHRASE" \
+              --default-key "$GPG_FINGERPRINT" \
+              -abs \
+              -o dists/stable/Release.gpg dists/stable/Release
+          else
+            gpg --batch --yes \
+              --default-key "$GPG_FINGERPRINT" \
+              --clearsign \
+              -o dists/stable/InRelease dists/stable/Release
+
+            gpg --batch --yes \
+              --default-key "$GPG_FINGERPRINT" \
+              -abs \
+              -o dists/stable/Release.gpg dists/stable/Release
+          fi
+
+          cd "$SITE_DIR"
+
+          mkdir -p tarminal/rpm/x86_64
+          cp "$WORK_DIR"/target/generate-rpm/tar-install-*.rpm tarminal/rpm/x86_64/
+          cp "$WORK_DIR"/target/generate-rpm/tarminal-*.rpm tarminal/rpm/x86_64/
+
+          createrepo_c tarminal/rpm/x86_64
+
+          if [ -n "${GPG_PASSPHRASE:-}" ]; then
+            gpg --batch --yes \
+              --pinentry-mode loopback \
+              --passphrase "$GPG_PASSPHRASE" \
+              --default-key "$GPG_FINGERPRINT" \
+              --detach-sign \
+              --armor \
+              tarminal/rpm/x86_64/repodata/repomd.xml
+          else
+            gpg --batch --yes \
+              --default-key "$GPG_FINGERPRINT" \
+              --detach-sign \
+              --armor \
+              tarminal/rpm/x86_64/repodata/repomd.xml
+          fi
+
+          if [ -f scripts/generate-package-indexes.py ]; then
+            python3 scripts/generate-package-indexes.py
+          else
+            echo "scripts/generate-package-indexes.py not found; skipping HTML index generation."
+          fi
+
+          git add -A
+
+          if git diff --cached --quiet; then
+            echo "No package repository changes to publish."
+          else
+            git commit -m "Update Tarminal packages ${GITHUB_REF_NAME:-manual}"
+            git push origin HEAD
+          fi
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: tarminal-linux-x64-release
+          name: tarminal-linux-x86_64-gnu-release
           path: dist/
 
       - name: Create GitHub Release
