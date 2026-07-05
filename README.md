@@ -2,6 +2,14 @@
 
 **Tarminal** installs Linux application tarballs as proper desktop apps.
 
+![Debian](https://img.shields.io/badge/Debian-Supported-A81D33?logo=debian&logoColor=white)
+![Ubuntu](https://img.shields.io/badge/Ubuntu-Supported-E95420?logo=ubuntu&logoColor=white)
+![Zorin OS](https://img.shields.io/badge/Zorin%20OS-Supported-15A6F0?logo=zorin&logoColor=white)
+![Fedora](https://img.shields.io/badge/Fedora-Supported-51A2DA?logo=fedora&logoColor=white)
+![Alpine Linux](https://img.shields.io/badge/Alpine-Supported-0D597F?logo=alpinelinux&logoColor=white)
+![Void Linux](https://img.shields.io/badge/Void-Supported-478061?logo=voidlinux&logoColor=white)
+![Arch Linux](https://img.shields.io/badge/Arch-Supported-1793D1?logo=archlinux&logoColor=white)
+
 Instead of asking users to extract a `.tar.xz` somewhere and run a random binary manually, Tarminal can install the app into a standard location, create a command, create a desktop menu entry, install an icon, track state, and remove it cleanly later.
 
 The project is split into two Cargo packages:
@@ -43,8 +51,61 @@ repo_gpgcheck=1
 gpgkey=https://packages.tamkungz.me/gpg.key
 EOF
 
+sudo dnf makecache
 sudo dnf install tarminal
 ```
+
+### Alpine APK
+
+```bash
+sudo mkdir -p /etc/apk/keys
+curl -fsSL https://packages.tamkungz.me/apk/tamkungz.rsa.pub | \
+  sudo tee /etc/apk/keys/tamkungz.rsa.pub >/dev/null
+
+echo "https://packages.tamkungz.me/apk" | \
+  sudo tee -a /etc/apk/repositories
+
+sudo apk update
+sudo apk add tarminal
+```
+
+### Void XBPS
+
+<details>
+
+```bash
+sudo mkdir -p /etc/xbps.d
+sudo tee /etc/xbps.d/tamkungz.conf >/dev/null <<'EOF'
+repository=https://packages.tamkungz.me/xbps/$XBPS_ARCH
+EOF
+
+sudo xbps-install -S
+sudo xbps-install tarminal
+```
+
+</details>
+
+### Arch Linux
+
+<details>
+
+```bash
+curl -fsSL https://packages.tamkungz.me/gpg.key | sudo pacman-key --add -
+sudo pacman-key --lsign-key release@tamkungz.me || true
+
+sudo tee -a /etc/pacman.conf >/dev/null <<'EOF'
+[tamkungz]
+Server = https://packages.tamkungz.me/arch/$arch
+SigLevel = DatabaseRequired PackageOptional
+EOF
+
+sudo pacman -Sy
+sudo pacman -S tarminal
+```
+
+</details>
+
+&nbsp;
 
 `gpgcheck=0` is currently used because the repository metadata is signed, while embedded RPM package signing may be added later.
 
