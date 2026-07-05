@@ -455,11 +455,14 @@ jobs:
           build_pkg() {
             local pkgname="$1" bin="$2" desc="$3"
             local destdir
+
             if [ -z "$desc" ]; then
               desc="$pkgname package"
             fi
+
             destdir="$(mktemp -d)"
             install -Dm755 "target/release/$bin" "$destdir/usr/bin/$bin"
+
             xbps-create \
               -A x86_64 \
               -n "${pkgname}-${VERSION}_1" \
@@ -468,12 +471,17 @@ jobs:
               --license "MIT" \
               --maintainer "TamKungZ <release@tamkungz.me>" \
               "$destdir"
+
             mv "${pkgname}-${VERSION}_1".*.xbps xbps-out/
             rm -rf "$destdir"
           }
 
           build_pkg tar-install tar-install "${{ steps.meta.outputs.ti_desc }}"
           build_pkg tarminal tarminal "${{ steps.meta.outputs.tm_desc }}"
+
+          xbps-rindex -a xbps-out/*.xbps
+          xbps-rindex -l xbps-out/*.xbps
+          ls -lah xbps-out
 
       - name: Smoke test xbps install
         run: |
