@@ -6,13 +6,6 @@ command: tarminal
 branch: stable
 
 finish-args:
-  # Tarminal is a host package/app installer. Flatpak's sandbox model
-  # fundamentally limits what it can do — it can only manage files inside
-  # the user's home directory (e.g. ~/.local/share/applications,
-  # ~/.local/bin). It cannot write to /opt, /usr/local, or system-wide
-  # paths from inside the sandbox. For full host-installer behavior,
-  # prefer the .deb/.rpm/Snap (classic) builds. This Flatpak build is
-  # best treated as a portable/sandboxed-subset artifact.
   - --filesystem=home
 
 modules:
@@ -21,8 +14,8 @@ modules:
     build-commands:
       - install -Dm755 target/release/tarminal /app/bin/tarminal
       - install -Dm755 target/release/tar-install /app/bin/tar-install
-      - install -Dm644 me.tamkungz.Tarminal.metainfo.xml /app/share/metainfo/me.tamkungz.Tarminal.metainfo.xml
-      - install -Dm644 me.tamkungz.Tarminal.desktop /app/share/applications/me.tamkungz.Tarminal.desktop
+      - install -Dm644 flatpak/me.tamkungz.Tarminal.metainfo.xml /app/share/metainfo/me.tamkungz.Tarminal.metainfo.xml
+      - install -Dm644 flatpak/me.tamkungz.Tarminal.desktop /app/share/applications/me.tamkungz.Tarminal.desktop
     sources:
       - type: dir
         path: ..
