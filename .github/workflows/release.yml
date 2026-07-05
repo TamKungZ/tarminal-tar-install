@@ -228,7 +228,7 @@ jobs:
     name: Release Alpine APK
     runs-on: ubuntu-22.04
     container:
-      image: alpine:3.20
+      image: alpine:3.22
 
     steps:
       # actions/checkout and actions/upload-artifact are Node-based actions;
@@ -383,6 +383,11 @@ jobs:
           set -eux
           xbps-install -Sy xbps
           xbps-install -Sy rust base-devel git jq openssl
+
+          command -v rustc
+          command -v cargo
+          rustc --version
+          cargo --version
 
       - name: Checkout
         run: |
