@@ -5,6 +5,22 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Library core for safely installing Linux app tarballs into desktop-friendly locations."
+homepage = "https://github.com/TamKungZ/tarminal-tar-install"
+
+[package.metadata.deb]
+section = "utils"
+priority = "optional"
+maintainer = "TamKungZ_ <kitthiwat.phimpromma@proton.me>"
+depends = "libc6 (>= 2.34), liblzma5 (>= 5.1.1alpha+20120614), tar-install (>= 0.1.0)"
+extended-description = """
+Core package for Tarminal.
+This package provides the tar-install command stub and shared project identity.
+"""
+
+[package.metadata.generate-rpm]
+assets = [
+  { source = "../../target/release/tar-install", dest = "/usr/bin/tar-install", mode = "755" },
+]
 
 [lib]
 name = "tar_install"

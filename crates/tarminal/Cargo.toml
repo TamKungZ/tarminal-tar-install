@@ -5,6 +5,26 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "CLI frontend for tar-install. Installs Linux app tarballs with commands, icons, and desktop entries."
+homepage = "https://github.com/TamKungZ/tarminal-tar-install"
+
+[package.metadata.deb]
+section = "utils"
+priority = "optional"
+maintainer = "TamKungZ_ <kitthiwat.phimpromma@proton.me>"
+depends = "tar-install (>= 0.1.0), libc6 (>= 2.34), liblzma5 (>= 5.1.1alpha+20120614)"
+extended-description = """
+Tarminal installs Linux .tar, .tar.gz, and .tar.xz application archives into a proper desktop-app layout with commands, icons, desktop entries, and uninstall tracking.
+"""
+
+[package.metadata.generate-rpm]
+assets = [
+  { source = "../../target/release/tarminal", dest = "/usr/bin/tarminal", mode = "755" },
+]
+
+[package.metadata.generate-rpm.requires]
+tar-install = ">= 0.1.0"
+libc6 = ">= 2.34"
+liblzma5 = ">= 5.1.1alpha+20120614"
 
 [[bin]]
 name = "tarminal"
