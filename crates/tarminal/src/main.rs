@@ -1,9 +1,13 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
 use dialoguer::Input;
-use std::path::PathBuf;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::path::{Path, PathBuf};
+use std::time::Duration;
 use tar_install::archive::inspect_archive;
-use tar_install::install::{doctor_app, install_archive, list_apps, make_plan, remove_app};
+use tar_install::install::{
+    doctor_app, install_archive_with_progress, list_apps, make_plan, remove_app, InstallProgress,
+};
 use tar_install::paths::InstallScope;
 use tar_install::recipe::{load_recipe, InstallInput};
 
@@ -44,8 +48,9 @@ enum Commands {
     Install {
         archive: PathBuf,
         /// User install uses ~/.local; system install uses /opt and /usr/local/bin.
-        #[arg(long, value_enum, default_value_t = ScopeArg::User)]
-        scope: ScopeArg,
+        /// When omitted, root/sudo defaults to system and normal users default to user.
+        #[arg(long, value_enum)]
+        scope: Option<ScopeArg>,
         /// Shortcut for --scope system.
         #[arg(long)]
         system: bool,
@@ -79,20 +84,23 @@ enum Commands {
     },
     /// List apps installed by Tarminal.
     List {
-        #[arg(long, value_enum, default_value_t = ScopeArg::User)]
-        scope: ScopeArg,
+        /// When omitted, root/sudo defaults to system and normal users default to user.
+        #[arg(long, value_enum)]
+        scope: Option<ScopeArg>,
     },
     /// Remove an app installed by Tarminal.
     Remove {
         id: String,
-        #[arg(long, value_enum, default_value_t = ScopeArg::User)]
-        scope: ScopeArg,
+        /// When omitted, root/sudo defaults to system and normal users default to user.
+        #[arg(long, value_enum)]
+        scope: Option<ScopeArg>,
     },
     /// Check installed files for an app.
     Doctor {
         id: String,
-        #[arg(long, value_enum, default_value_t = ScopeArg::User)]
-        scope: ScopeArg,
+        /// When omitted, root/sudo defaults to system and normal users default to user.
+        #[arg(long, value_enum)]
+        scope: Option<ScopeArg>,
     },
 }
 
@@ -121,7 +129,7 @@ fn main() -> Result<()> {
             config,
             force,
         } => {
-            let scope = if system { InstallScope::System } else { scope.into() };
+            let scope = resolve_scope(scope, system);
             let loaded_recipe = match recipe {
                 Some(path) => Some(load_recipe(&path)?),
                 None => None,
@@ -142,17 +150,26 @@ fn main() -> Result<()> {
                 input = interactive_config(&archive, scope, input)?;
             }
 
-            let report = install_archive(&archive, scope, input)?;
+            let pb = install_progress_bar();
+            let progress_pb = pb.clone();
+            let result = install_archive_with_progress(&archive, scope, input, Some(&|event| {
+                update_progress_bar(&progress_pb, event);
+            }));
+            pb.finish_and_clear();
+
+            let report = result?;
             println!("Installed {}", report.installed.name);
+            println!("  scope:    {:?}", report.installed.scope);
             println!("  id:       {}", report.installed.id);
             println!("  command:  {}", report.installed.command_path.display());
             println!("  desktop:  {}", report.installed.desktop_path.display());
             println!("  app dir:  {}", report.installed.install_dir.display());
         }
         Commands::List { scope } => {
-            let apps = list_apps(scope.into())?;
+            let scope = resolve_scope(scope, false);
+            let apps = list_apps(scope)?;
             if apps.is_empty() {
-                println!("No apps installed in this scope.");
+                println!("No apps installed in {:?} scope.", scope);
             } else {
                 for app in apps {
                     let version = app.version.unwrap_or_else(|| "-".to_string());
@@ -161,19 +178,79 @@ fn main() -> Result<()> {
             }
         }
         Commands::Remove { id, scope } => {
-            let report = remove_app(scope.into(), &id)?;
+            let scope = resolve_scope(scope, false);
+            let report = remove_app(scope, &id)?;
             println!("Removed {}", report.id);
             for path in report.removed_paths {
                 println!("  {}", path.display());
             }
         }
         Commands::Doctor { id, scope } => {
-            for line in doctor_app(scope.into(), &id)? {
+            let scope = resolve_scope(scope, false);
+            for line in doctor_app(scope, &id)? {
                 println!("{}", line);
             }
         }
     }
     Ok(())
+}
+
+fn resolve_scope(scope: Option<ScopeArg>, system: bool) -> InstallScope {
+    if system {
+        InstallScope::System
+    } else if let Some(scope) = scope {
+        scope.into()
+    } else if running_as_root() {
+        InstallScope::System
+    } else {
+        InstallScope::User
+    }
+}
+
+fn running_as_root() -> bool {
+    unsafe { libc::geteuid() == 0 }
+}
+
+fn install_progress_bar() -> ProgressBar {
+    let pb = ProgressBar::new(0);
+    pb.enable_steady_tick(Duration::from_millis(100));
+    pb.set_style(
+        ProgressStyle::with_template("{spinner:.green} {msg} [{bar:40.cyan/blue}] {pos}/{len}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+    pb
+}
+
+fn update_progress_bar(pb: &ProgressBar, event: InstallProgress) {
+    match event {
+        InstallProgress::Planning => {
+            pb.set_message("planning install");
+        }
+        InstallProgress::Extracting { current, total, path } => {
+            pb.set_length(total);
+            pb.set_position(current);
+            pb.set_message(format!("extracting {}", short_path(&path)));
+        }
+        InstallProgress::Copying { current, total, path } => {
+            pb.set_length(total);
+            pb.set_position(current);
+            pb.set_message(format!("copying {}", short_path(&path)));
+        }
+        InstallProgress::Integrating { step } => {
+            pb.set_message(step);
+        }
+        InstallProgress::Finished => {
+            pb.set_message("done");
+        }
+    }
+}
+
+fn short_path(path: &Path) -> String {
+    path.file_name()
+        .and_then(|s| s.to_str())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| path.display().to_string())
 }
 
 fn interactive_config(archive: &PathBuf, scope: InstallScope, mut input: InstallInput) -> Result<InstallInput> {

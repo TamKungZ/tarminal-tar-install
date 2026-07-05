@@ -34,7 +34,10 @@ jobs:
             git \
             gnupg \
             rpm \
-            xz-utils
+            xz-utils \
+            jq \
+            flatpak \
+            flatpak-builder
           cargo install cargo-deb cargo-generate-rpm
 
       - name: Build release binaries
@@ -93,6 +96,46 @@ jobs:
 
           sudo apt remove -y tarminal tar-install
 
+      - name: Prepare Snap metadata
+        run: |
+          set -eux
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" = "$GITHUB_REF_NAME" ] || [ -z "$VERSION" ]; then
+            VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "tarminal") | .version' | head -n1)"
+          fi
+
+          sed -i "s/^version: .*/version: '$VERSION'/" snap/snapcraft.yaml
+
+      - name: Build snap package
+        id: snapcraft
+        uses: snapcore/action-build@v1
+        with:
+          path: .
+
+      - name: Collect snap package
+        run: |
+          set -eux
+
+          mkdir -p target/snap
+          cp "${{ steps.snapcraft.outputs.snap }}" target/snap/
+          ls -lah target/snap
+
+      - name: Build flatpak bundle
+        run: |
+          set -eux
+
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+
+          mkdir -p target/flatpak target/flatpak-repo
+
+          flatpak-builder             --user             --force-clean             --install-deps-from=flathub             --repo=target/flatpak-repo             target/flatpak-build             flatpak/me.tamkungz.Tarminal.yml
+
+          flatpak build-bundle             target/flatpak-repo             target/flatpak/me.tamkungz.Tarminal-linux-x86_64.flatpak             me.tamkungz.Tarminal             stable
+
+          ls -lah target/flatpak
+
       - name: Prepare dist
         run: |
           set -eux
@@ -104,6 +147,14 @@ jobs:
 
           cp target/debian/*.deb dist/
           cp target/generate-rpm/*.rpm dist/
+
+          if compgen -G "target/snap/*.snap" > /dev/null; then
+            cp target/snap/*.snap dist/
+          fi
+
+          if compgen -G "target/flatpak/*.flatpak" > /dev/null; then
+            cp target/flatpak/*.flatpak dist/
+          fi
 
           tar -C dist -cJf dist/tar-install-linux-x86_64-gnu.tar.xz tar-install-linux-x86_64-gnu
           tar -C dist -cJf dist/tarminal-linux-x86_64-gnu.tar.xz tarminal-linux-x86_64-gnu

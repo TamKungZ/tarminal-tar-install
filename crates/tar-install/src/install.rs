@@ -41,6 +41,15 @@ pub struct RemoveReport {
     pub removed_paths: Vec<PathBuf>,
 }
 
+#[derive(Debug, Clone)]
+pub enum InstallProgress {
+    Planning,
+    Extracting { current: u64, total: u64, path: PathBuf },
+    Copying { current: u64, total: u64, path: PathBuf },
+    Integrating { step: &'static str },
+    Finished,
+}
+
 pub fn make_plan(archive_path: &Path, scope: InstallScope, input: &InstallInput) -> Result<(InstallPlan, ArchiveInspection)> {
     let inspection = inspect_archive(archive_path)?;
     if !inspection.safe {
@@ -111,6 +120,17 @@ pub fn make_plan(archive_path: &Path, scope: InstallScope, input: &InstallInput)
 }
 
 pub fn install_archive(archive_path: &Path, scope: InstallScope, input: InstallInput) -> Result<InstallReport> {
+    install_archive_with_progress(archive_path, scope, input, None)
+}
+
+pub fn install_archive_with_progress(
+    archive_path: &Path,
+    scope: InstallScope,
+    input: InstallInput,
+    progress: Option<&dyn Fn(InstallProgress)>,
+) -> Result<InstallReport> {
+    emit_progress(progress, InstallProgress::Planning);
+
     let (plan, inspection) = make_plan(archive_path, scope, &input)?;
 
     if plan.targets.app_dir.exists() && !input.force {
@@ -118,7 +138,7 @@ pub fn install_archive(archive_path: &Path, scope: InstallScope, input: InstallI
     }
 
     let staging = tempdir().context("failed to create temporary extraction directory")?;
-    safe_extract_to(archive_path, staging.path())?;
+    safe_extract_to(archive_path, staging.path(), progress, inspection.entries_count as u64)?;
 
     let source_root = if let Some(root) = inspection.common_root.as_ref() {
         let candidate = staging.path().join(root);
@@ -128,13 +148,14 @@ pub fn install_archive(archive_path: &Path, scope: InstallScope, input: InstallI
     };
 
     if plan.targets.app_dir.exists() {
+        emit_progress(progress, InstallProgress::Integrating { step: "removing previous install" });
         fs::remove_dir_all(&plan.targets.app_dir)
             .with_context(|| format!("failed to remove existing install dir: {}", plan.targets.app_dir.display()))?;
     }
     if let Some(parent) = plan.targets.app_dir.parent() {
         fs::create_dir_all(parent).with_context(|| format!("failed to create app parent dir: {}", parent.display()))?;
     }
-    copy_dir_all(&source_root, &plan.targets.app_dir)?;
+    copy_dir_all(&source_root, &plan.targets.app_dir, progress)?;
 
     let exec_abs = plan.targets.app_dir.join(&plan.exec_path_inside_app);
     if !exec_abs.exists() {
@@ -142,14 +163,17 @@ pub fn install_archive(archive_path: &Path, scope: InstallScope, input: InstallI
     }
     ensure_executable(&exec_abs)?;
 
+    emit_progress(progress, InstallProgress::Integrating { step: "writing command wrapper" });
     write_wrapper(&plan.targets.command_path, &plan.targets.app_dir, &exec_abs)?;
 
+    emit_progress(progress, InstallProgress::Integrating { step: "installing icon" });
     let icon_paths = if let Some(icon_inside) = plan.icon_path_inside_app.as_ref() {
         install_icon(&plan, icon_inside).unwrap_or_default()
     } else {
         Vec::new()
     };
 
+    emit_progress(progress, InstallProgress::Integrating { step: "writing desktop entry" });
     write_desktop_entry(&plan.targets.desktop_path, &DesktopEntryInput {
         name: &plan.app_name,
         generic_name: None,
@@ -160,6 +184,7 @@ pub fn install_archive(archive_path: &Path, scope: InstallScope, input: InstallI
         terminal: plan.terminal,
     })?;
 
+    emit_progress(progress, InstallProgress::Integrating { step: "saving state" });
     let sha256 = sha256_file(archive_path).ok();
     let installed = InstalledApp {
         id: plan.app_id.clone(),
@@ -179,6 +204,7 @@ pub fn install_archive(archive_path: &Path, scope: InstallScope, input: InstallI
     db.apps.insert(installed.id.clone(), installed.clone());
     save_state(&plan.targets.state_path, &db)?;
 
+    emit_progress(progress, InstallProgress::Finished);
     Ok(InstallReport { plan, installed })
 }
 
@@ -222,6 +248,12 @@ pub fn list_apps(scope: InstallScope) -> Result<Vec<InstalledApp>> {
     Ok(db.apps.values().cloned().collect())
 }
 
+fn emit_progress(progress: Option<&dyn Fn(InstallProgress)>, event: InstallProgress) {
+    if let Some(callback) = progress {
+        callback(event);
+    }
+}
+
 fn strip_common_root(path: &Path, root: Option<&Path>) -> PathBuf {
     if let Some(root) = root {
         path.strip_prefix(root).unwrap_or(path).to_path_buf()
@@ -230,14 +262,27 @@ fn strip_common_root(path: &Path, root: Option<&Path>) -> PathBuf {
     }
 }
 
-fn safe_extract_to(archive_path: &Path, dest: &Path) -> Result<()> {
+fn safe_extract_to(
+    archive_path: &Path,
+    dest: &Path,
+    progress: Option<&dyn Fn(InstallProgress)>,
+    total_entries: u64,
+) -> Result<()> {
     let reader = open_tar_reader(archive_path)?;
     let mut archive = Archive::new(reader);
+    let mut current = 0_u64;
 
     for entry in archive.entries().context("failed to read tar entries")? {
         let mut entry = entry.context("failed to read tar entry")?;
         let entry_type = entry.header().entry_type();
         let raw_path = entry.path().context("failed to read tar entry path")?.to_path_buf();
+        current += 1;
+
+        emit_progress(progress, InstallProgress::Extracting {
+            current,
+            total: total_entries,
+            path: raw_path.clone(),
+        });
 
         if let Some(reason) = unsafe_path_reason(&raw_path) {
             bail!("unsafe path in archive: {} ({})", raw_path.display(), reason);
@@ -331,15 +376,29 @@ fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
     Some(normalized)
 }
 
-fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
+fn copy_dir_all(src: &Path, dst: &Path, progress: Option<&dyn Fn(InstallProgress)>) -> Result<()> {
     fs::create_dir_all(dst)?;
 
+    let mut entries = Vec::new();
     for entry in WalkDir::new(src).follow_links(false) {
-        let entry = entry?;
+        entries.push(entry?);
+    }
+
+    let total = entries.iter().filter(|entry| entry.path() != src).count() as u64;
+    let mut current = 0_u64;
+
+    for entry in entries {
         let rel = entry.path().strip_prefix(src)?;
         if rel.as_os_str().is_empty() {
             continue;
         }
+
+        current += 1;
+        emit_progress(progress, InstallProgress::Copying {
+            current,
+            total,
+            path: rel.to_path_buf(),
+        });
 
         let to = dst.join(rel);
 

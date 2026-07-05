@@ -13,6 +13,8 @@ tarminal     = CLI frontend powered by tar-install
 
 `tar-install` also ships a small hint command. If someone runs `tar-install ...`, it tells them to install or use `tarminal`.
 
+![Screenshot Tarminal Preview](https://pub-df28fb9f69aa4326a1c6e10fb1f2abdc.r2.dev/assets-image/tarminal/Screenshot_Tarminal.png)
+
 ## Install
 
 ### Debian / Ubuntu / Zorin
@@ -106,6 +108,9 @@ Check an installed app:
 ```bash
 tarminal doctor myapp
 ```
+&nbsp;
+<div style="text-align:center;"><img src="https://pub-df28fb9f69aa4326a1c6e10fb1f2abdc.r2.dev/assets-image/tarminal/Screenshot_Tarminal--help.png" alt="Tarminal Command --help" style="width:60%;height:auto;"></div>
+&nbsp;
 
 ## What Tarminal does
 

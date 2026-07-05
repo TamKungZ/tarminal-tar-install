@@ -1,0 +1,22 @@
+app-id: me.tamkungz.Tarminal
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: tarminal
+branch: stable
+
+finish-args:
+  # Experimental: Tarminal is a host installer, so a Flatpak build is mostly
+  # useful as a portable artifact/test package. APT/RPM/Snap are better install
+  # channels for normal use.
+  - --filesystem=home
+
+modules:
+  - name: tarminal
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 target/release/tarminal /app/bin/tarminal
+      - install -Dm755 target/release/tar-install /app/bin/tar-install
+    sources:
+      - type: dir
+        path: ..

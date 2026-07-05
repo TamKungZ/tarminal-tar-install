@@ -13,6 +13,9 @@ pub mod state;
 
 pub use archive::{ArchiveEntry, ArchiveInspection, ExecutableCandidate};
 pub use filename::FilenameGuess;
-pub use install::{install_archive, remove_app, doctor_app, InstallPlan, InstallReport, RemoveReport};
+pub use install::{
+    doctor_app, install_archive, install_archive_with_progress, remove_app, InstallPlan, InstallProgress,
+    InstallReport, RemoveReport,
+};
 pub use paths::{InstallScope, InstallTargets};
 pub use recipe::{AppRecipe, InstallInput, RecipeDesktop};
