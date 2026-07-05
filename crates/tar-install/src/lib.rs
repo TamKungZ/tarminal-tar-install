@@ -6,11 +6,11 @@
 pub mod archive;
 pub mod desktop;
 pub mod filename;
-pub mod version;
 pub mod install;
 pub mod paths;
 pub mod recipe;
 pub mod state;
+pub mod version;
 
 pub use archive::{ArchiveEntry, ArchiveInspection, ExecutableCandidate};
 pub use filename::FilenameGuess;
@@ -20,3 +20,4 @@ pub use install::{
 };
 pub use paths::{InstallScope, InstallTargets};
 pub use recipe::{AppRecipe, InstallInput, RecipeDesktop};
+pub use version::{detect_installed_version, parse_version_from_text, VersionProbeResult};

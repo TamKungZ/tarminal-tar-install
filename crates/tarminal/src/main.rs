@@ -66,6 +66,9 @@ enum Commands {
         /// Version override.
         #[arg(long)]
         version: Option<String>,
+        /// Do not run the installed executable to detect its version.
+        #[arg(long = "no-probe-version")]
+        no_probe_version: bool,
         /// Executable path inside the app directory after root stripping.
         #[arg(long = "exec")]
         exec_path: Option<String>,
@@ -123,6 +126,7 @@ fn main() -> Result<()> {
             id,
             name,
             version,
+            no_probe_version,
             exec_path,
             command,
             icon,
@@ -138,6 +142,7 @@ fn main() -> Result<()> {
                 id,
                 name,
                 version,
+                probe_version: if no_probe_version { Some(false) } else { None },
                 exec: exec_path,
                 command,
                 icon,
