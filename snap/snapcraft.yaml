@@ -34,11 +34,13 @@ apps:
 
 parts:
   tarminal:
-    plugin: dump
-    source: target/release
-    organize:
-      tarminal: bin/tarminal
-      tar-install: bin/tar-install
+    plugin: rust
+    source: .
+    rust-channel: stable
+    override-build: |
+      cargo build --release --locked
+      install -Dm755 target/release/tarminal $CRAFT_PART_INSTALL/bin/tarminal
+      install -Dm755 target/release/tar-install $CRAFT_PART_INSTALL/bin/tar-install
     stage:
       - bin/tarminal
       - bin/tar-install
