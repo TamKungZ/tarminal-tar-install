@@ -480,8 +480,8 @@ jobs:
           build_pkg tarminal tarminal "${{ steps.meta.outputs.tm_desc }}"
 
           xbps-rindex -a xbps-out/*.xbps
-          xbps-rindex -l xbps-out/*.xbps
           ls -lah xbps-out
+          find xbps-out -maxdepth 1 -type f -print
 
       - name: Smoke test xbps install
         run: |
