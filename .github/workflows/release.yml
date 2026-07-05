@@ -382,7 +382,7 @@ jobs:
         run: |
           set -eux
           xbps-install -Sy xbps
-          xbps-install -Sy rust base-devel git jq openssl
+          xbps-install -Sy rust cargo base-devel git jq openssl
 
           command -v rustc
           command -v cargo
