@@ -918,18 +918,16 @@ jobs:
           rm -f release-assets/SHA256SUMS
           ( cd release-assets && sha256sum * > SHA256SUMS )
 
-      - name: Create or update GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -eux
-
           TAG="${GITHUB_REF_NAME}"
+          REPO="${GITHUB_REPOSITORY}"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --clobber
+          if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber --repo "$REPO"
           else
             gh release create "$TAG" release-assets/* \
+              --repo "$REPO" \
               --title "Tarminal ${TAG}" \
               --notes "Release ${TAG}"
           fi
+        env:
+          GH_TOKEN: ${{ github.token }}
