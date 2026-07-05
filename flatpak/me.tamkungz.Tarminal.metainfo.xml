@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="console-application">
+  <id>me.tamkungz.Tarminal</id>
+  <name>Tarminal</name>
+  <summary>Install Linux app tarballs into desktop-friendly locations</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  <description>
+    <p>
+      Tarminal is a CLI frontend for tar-install. It installs Linux app
+      tarballs into desktop-friendly locations by creating app directories,
+      command wrappers, desktop entries, icons, install state, and clean
+      uninstall support.
+    </p>
+  </description>
+  <url type="homepage">https://packages.tamkungz.me/apps/tarminal/</url>
+  <url type="bugtracker">https://github.com/TamKungZ/tarminal-tar-install/issues</url>
+  <provides>
+    <binary>tarminal</binary>
+    <binary>tar-install</binary>
+  </provides>
+  <releases>
+    <release version="0.1.2" date="2026-07-05"/>
+  </releases>
+</component>

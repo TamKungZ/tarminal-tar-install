@@ -2,21 +2,44 @@ app-id: me.tamkungz.Tarminal
 runtime: org.freedesktop.Platform
 runtime-version: '24.08'
 sdk: org.freedesktop.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
 command: tarminal
 branch: stable
 
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/tarminal/cargo
+
 finish-args:
-  # Experimental: Tarminal is a host installer, so a Flatpak build is mostly
-  # useful as a portable artifact/test package. APT/RPM/Snap are better install
-  # channels for normal use.
+  # Tarminal is a host package/app installer. Flatpak's sandbox model
+  # fundamentally limits what it can do — it can only manage files inside
+  # the user's home directory (e.g. ~/.local/share/applications,
+  # ~/.local/bin). It cannot write to /opt, /usr/local, or system-wide
+  # paths from inside the sandbox. For full host-installer behavior,
+  # prefer the .deb/.rpm/Snap (classic) builds. This Flatpak build is
+  # best treated as a portable/sandboxed-subset artifact.
   - --filesystem=home
+  - --share=network   # only if tarminal downloads tarballs directly
 
 modules:
   - name: tarminal
     buildsystem: simple
     build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml
+      - cargo --offline build --release
       - install -Dm755 target/release/tarminal /app/bin/tarminal
       - install -Dm755 target/release/tar-install /app/bin/tar-install
+      - install -Dm644 me.tamkungz.Tarminal.metainfo.xml \
+          /app/share/metainfo/me.tamkungz.Tarminal.metainfo.xml
+      - install -Dm644 me.tamkungz.Tarminal.desktop \
+          /app/share/applications/me.tamkungz.Tarminal.desktop
     sources:
-      - type: dir
-        path: ..
+      - type: archive
+        url: https://github.com/TamKungZ/tarminal-tar-install/archive/refs/tags/v0.1.2.tar.gz
+        sha256: 6b267e6a5e6e1ab3c98c0a828baeef5d8eacee05ef09c523cbbce308a7d149ca
+      - type: file
+        path: me.tamkungz.Tarminal.metainfo.xml
+      - type: file
+        path: me.tamkungz.Tarminal.desktop

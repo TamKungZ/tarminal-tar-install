@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=Tarminal
+Comment=Install Linux app tarballs into desktop-friendly locations
+Exec=tarminal
+Terminal=true
+Type=Application
+Categories=System;Utility;
+NoDisplay=true

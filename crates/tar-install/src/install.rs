@@ -1,5 +1,6 @@
 use crate::archive::{inspect_archive, open_tar_reader, read_text_entry, unsafe_path_reason, ArchiveInspection};
 use crate::desktop::{write_desktop_entry, DesktopEntryInput};
+use crate::filename::{normalize_arch, normalize_os};
 use crate::paths::{self, InstallScope, InstallTargets};
 use crate::recipe::{display_name_from_id, sanitize_command, sanitize_id, AppRecipe, InstallInput};
 use crate::state::{load_state, save_state, InstalledApp};
@@ -54,6 +55,11 @@ pub fn make_plan(archive_path: &Path, scope: InstallScope, input: &InstallInput)
     let inspection = inspect_archive(archive_path)?;
     if !inspection.safe {
         bail!("archive contains unsafe paths; run `tarminal inspect` for details");
+    }
+    if !input.force {
+        if let Some(reason) = incompatible_platform_reason(&inspection.filename_guess) {
+            bail!("{} (use --force to override)", reason);
+        }
     }
 
     let embedded_recipe = if input.recipe.is_none() {
@@ -252,6 +258,33 @@ fn emit_progress(progress: Option<&dyn Fn(InstallProgress)>, event: InstallProgr
     if let Some(callback) = progress {
         callback(event);
     }
+}
+
+fn incompatible_platform_reason(guess: &crate::filename::FilenameGuess) -> Option<String> {
+    if let Some(archive_os) = guess.os.as_deref() {
+        let current_os = normalize_os(std::env::consts::OS)
+            .unwrap_or_else(|| std::env::consts::OS.to_string());
+
+        if archive_os != current_os {
+            return Some(format!(
+                "archive appears to be for {}, but this system is {}",
+                archive_os, current_os
+            ));
+        }
+    }
+
+    if let Some(archive_arch) = guess.architecture.as_deref() {
+        let current_arch = normalize_arch(std::env::consts::ARCH);
+
+        if archive_arch != current_arch {
+            return Some(format!(
+                "archive appears to be for {} architecture, but this system is {}",
+                archive_arch, current_arch
+            ));
+        }
+    }
+
+    None
 }
 
 fn strip_common_root(path: &Path, root: Option<&Path>) -> PathBuf {

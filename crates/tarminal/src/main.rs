@@ -172,7 +172,7 @@ fn main() -> Result<()> {
                 println!("No apps installed in {:?} scope.", scope);
             } else {
                 for app in apps {
-                    let version = app.version.unwrap_or_else(|| "-".to_string());
+                    let version = app.version.unwrap_or_else(|| "unknown".to_string());
                     println!("{}  {}  {}", app.id, version, app.command_name);
                 }
             }
