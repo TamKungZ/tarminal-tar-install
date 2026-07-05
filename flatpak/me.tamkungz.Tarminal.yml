@@ -5,6 +5,8 @@ sdk: org.freedesktop.Sdk
 command: tarminal
 branch: stable
 
+appstream-compose: false
+
 finish-args:
   - --filesystem=home
 
