@@ -1,9 +1,10 @@
 name: Release
 
-"on":
+on:
   push:
     tags:
       - "v*.*.*"
+      - "v*.*.*-*"
   workflow_dispatch:
 
 permissions:
@@ -218,8 +219,521 @@ jobs:
             gpg --verify "$sig" "$file"
           done
 
-      - name: Publish package repository
-        if: startsWith(github.ref, 'refs/tags/')
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-linux-x64
+          path: dist/
+  release-alpine-apk:
+    name: Release Alpine APK
+    runs-on: ubuntu-22.04
+    container:
+      image: alpine:3.20
+
+    steps:
+      # actions/checkout and actions/upload-artifact are Node-based actions;
+      # the runner's bundled Node binary needs glibc, which Alpine doesn't
+      # ship by default. gcompat provides a compatible shim. We still do the
+      # actual git checkout by hand below since that's more reliable than
+      # patching checkout itself.
+      - name: Install base tooling
+        run: |
+          set -eux
+          apk update
+          apk add --no-cache \
+            alpine-sdk \
+            rust cargo \
+            git bash curl jq openssl \
+            gcompat sudo
+
+      - name: Create non-root builder user
+        run: |
+          set -eux
+          # abuild refuses to run as root, so builds need a real user.
+          adduser -D builder
+          addgroup builder abuild
+          echo "builder ALL=(ALL) NOPASSWD: /sbin/apk, /usr/bin/abuild" > /etc/sudoers.d/builder
+          chmod 0440 /etc/sudoers.d/builder
+
+      - name: Checkout
+        run: |
+          set -eux
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --no-checkout "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git checkout --force "$GITHUB_SHA"
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Resolve package metadata
+        id: meta
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" = "$GITHUB_REF_NAME" ] || [ -z "$VERSION" ]; then
+            VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "tarminal") | .version' | head -n1)"
+          fi
+          META="$(cargo metadata --no-deps --format-version 1)"
+          {
+            echo "version=$VERSION"
+            echo "ti_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tar-install") | .description // "Installer for Linux app tarballs"')"
+            echo "tm_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .description // "CLI frontend for tar-install"')"
+            echo "license=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .license // "MIT"')"
+            echo "homepage=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .homepage // "https://github.com/TamKungZ/tarminal"')"
+          } >> "$GITHUB_OUTPUT"
+
+      # NOTE: this key is only for signing the Alpine repo (APKINDEX + packages).
+      # It is intentionally separate from GPG_PRIVATE_KEY, since apk/abuild only
+      # accept RSA keys in abuild's own on-disk format, not a GPG keyring.
+      - name: Install abuild signing key
+        env:
+          ALPINE_ABUILD_PRIVATE_KEY: ${{ secrets.ALPINE_ABUILD_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ALPINE_ABUILD_PRIVATE_KEY:-}" ]; then
+            echo "ALPINE_ABUILD_PRIVATE_KEY secret is required to sign Alpine packages."
+            exit 1
+          fi
+          mkdir -p /home/builder/.abuild /home/builder/packages
+          printf '%s' "$ALPINE_ABUILD_PRIVATE_KEY" > /home/builder/.abuild/tamkungz.rsa
+          chmod 600 /home/builder/.abuild/tamkungz.rsa
+          openssl rsa -in /home/builder/.abuild/tamkungz.rsa -pubout -out /home/builder/.abuild/tamkungz.rsa.pub
+          {
+            echo "PACKAGER_PRIVKEY=/home/builder/.abuild/tamkungz.rsa"
+            echo "REPODEST=/home/builder/packages"
+          } > /home/builder/.abuild/abuild.conf
+          mkdir -p /etc/apk/keys
+          cp /home/builder/.abuild/tamkungz.rsa.pub /etc/apk/keys/tamkungz.rsa.pub
+          chown -R builder:builder /home/builder/.abuild /home/builder/packages
+
+      - name: Generate APKBUILDs
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p alpine/tar-install alpine/tarminal
+
+          gen() {
+            local pkgname="$1" desc="$2" outdir="$3"
+            sed \
+              -e "s|__PKGNAME__|$pkgname|g" \
+              -e "s|__VERSION__|${{ steps.meta.outputs.version }}|g" \
+              -e "s|__PKGDESC__|$desc|g" \
+              -e "s|__HOMEPAGE__|${{ steps.meta.outputs.homepage }}|g" \
+              -e "s|__LICENSE__|${{ steps.meta.outputs.license }}|g" \
+              -e "s|__MAINTAINER_EMAIL__|release@tamkungz.me|g" \
+              alpine/APKBUILD.template > "$outdir/APKBUILD"
+          }
+
+          gen tar-install "${{ steps.meta.outputs.ti_desc }}" alpine/tar-install
+          gen tarminal "${{ steps.meta.outputs.tm_desc }}" alpine/tarminal
+
+          chown -R builder:builder alpine
+
+      - name: Build .apk packages
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          for pkg in tar-install tarminal; do
+            su builder -c "cd '$PWD/alpine/$pkg' && abuild -F checksum && abuild -F -r"
+          done
+
+      - name: Smoke test apk install
+        run: |
+          set -eux
+          apk add --no-cache --allow-untrusted $(find /home/builder/packages -name 'tar-install-*.apk')
+          apk add --no-cache --allow-untrusted $(find /home/builder/packages -name 'tarminal-*.apk')
+          tar-install || true
+          tarminal --help
+          apk del tar-install tarminal
+
+      - name: Build signed APK repo index
+        run: |
+          set -eux
+          mkdir -p "$GITHUB_WORKSPACE/dist-repo/apk/x86_64"
+          find /home/builder/packages -name '*.apk' -exec cp {} "$GITHUB_WORKSPACE/dist-repo/apk/x86_64/" \;
+          cp /home/builder/.abuild/tamkungz.rsa.pub "$GITHUB_WORKSPACE/dist-repo/apk/tamkungz.rsa.pub"
+          chown -R builder:builder "$GITHUB_WORKSPACE/dist-repo"
+          cd "$GITHUB_WORKSPACE/dist-repo/apk/x86_64"
+          su builder -c "cd '$PWD' && apk index -o APKINDEX.tar.gz *.apk"
+          su builder -c "cd '$PWD' && abuild-sign -k /home/builder/.abuild/tamkungz.rsa APKINDEX.tar.gz"
+
+      - name: Prepare plain dist copies
+        run: |
+          set -eux
+          mkdir -p "$GITHUB_WORKSPACE/dist-repo/plain"
+          find /home/builder/packages -name '*.apk' -exec cp {} "$GITHUB_WORKSPACE/dist-repo/plain/" \;
+          cd "$GITHUB_WORKSPACE/dist-repo/plain"
+          sha256sum * > SHA256SUMS
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-alpine-apk
+          path: dist-repo/
+
+  release-void-xbps:
+    name: Release Void XBPS
+    runs-on: ubuntu-22.04
+    container:
+      image: ghcr.io/void-linux/void-glibc:latest
+
+    steps:
+      - name: Install build tooling
+        run: |
+          set -eux
+          xbps-install -Sy xbps
+          xbps-install -Sy rust base-devel git jq openssl
+
+      - name: Checkout
+        run: |
+          set -eux
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --no-checkout "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git checkout --force "$GITHUB_SHA"
+
+      - name: Resolve package metadata
+        id: meta
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" = "$GITHUB_REF_NAME" ] || [ -z "$VERSION" ]; then
+            VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "tarminal") | .version' | head -n1)"
+          fi
+          META="$(cargo metadata --no-deps --format-version 1)"
+          {
+            echo "version=$VERSION"
+            echo "ti_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tar-install") | .description // "Installer for Linux app tarballs"')"
+            echo "tm_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .description // "CLI frontend for tar-install"')"
+            echo "homepage=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .homepage // "https://github.com/TamKungZ/tarminal"')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build release binaries
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          cargo build --release --locked -p tar-install --bin tar-install
+          cargo build --release --locked -p tarminal
+          strip target/release/tar-install target/release/tarminal
+
+      # xbps-create wraps an already-built destdir directly into a .xbps binary
+      # package. This skips the full xbps-src/void-packages/masterdir route
+      # (the "canonical" way Void packages are normally built), the same way
+      # cargo-deb/cargo-generate-rpm wrap a pre-built binary instead of
+      # rebuilding under dpkg-buildpackage/rpmbuild.
+      - name: Build .xbps packages
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          VERSION="${{ steps.meta.outputs.version }}"
+          mkdir -p xbps-out
+
+          build_pkg() {
+            local pkgname="$1" bin="$2" desc="$3"
+            local destdir
+            destdir="$(mktemp -d)"
+            install -Dm755 "target/release/$bin" "$destdir/usr/bin/$bin"
+            xbps-create \
+              -A x86_64 \
+              -n "${pkgname}-${VERSION}_1" \
+              -s "$desc" \
+              --homepage "${{ steps.meta.outputs.homepage }}" \
+              --license "MIT" \
+              --maintainer "TamKungZ <release@tamkungz.me>" \
+              "$destdir"
+            mv "${pkgname}-${VERSION}_1".*.xbps xbps-out/
+            rm -rf "$destdir"
+          }
+
+          build_pkg tar-install tar-install "${{ steps.meta.outputs.ti_desc }}"
+          build_pkg tarminal tarminal "${{ steps.meta.outputs.tm_desc }}"
+
+      - name: Smoke test xbps install
+        run: |
+          set -eux
+          xbps-install --repository="$GITHUB_WORKSPACE/xbps-out" -y tar-install tarminal
+          tar-install || true
+          tarminal --help
+          xbps-remove -y tar-install tarminal
+
+      # This key is separate from GPG_PRIVATE_KEY: xbps-rindex only accepts
+      # RSA keys in plain PEM format, not a GPG keyring.
+      - name: Build signed XBPS repo index
+        env:
+          VOID_XBPS_PRIVATE_KEY: ${{ secrets.VOID_XBPS_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${VOID_XBPS_PRIVATE_KEY:-}" ]; then
+            echo "VOID_XBPS_PRIVATE_KEY secret is required to sign the Void repo."
+            exit 1
+          fi
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p dist-repo/xbps/x86_64
+          cp xbps-out/*.xbps dist-repo/xbps/x86_64/
+          printf '%s' "$VOID_XBPS_PRIVATE_KEY" > /tmp/void-repo.pem
+          chmod 600 /tmp/void-repo.pem
+          xbps-rindex -a dist-repo/xbps/x86_64/*.xbps
+          xbps-rindex \
+            --sign \
+            --signedby "TamKungZ <release@tamkungz.me>" \
+            --privkey /tmp/void-repo.pem \
+            dist-repo/xbps/x86_64
+          openssl rsa -in /tmp/void-repo.pem -pubout -out dist-repo/xbps/tamkungz-void.pem.pub
+          shred -u /tmp/void-repo.pem
+
+      - name: Prepare plain dist copies
+        run: |
+          set -eux
+          mkdir -p "$GITHUB_WORKSPACE/dist-repo/plain"
+          cp "$GITHUB_WORKSPACE"/xbps-out/*.xbps "$GITHUB_WORKSPACE/dist-repo/plain/"
+          cd "$GITHUB_WORKSPACE/dist-repo/plain"
+          sha256sum * > SHA256SUMS
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-void-xbps
+          path: dist-repo/
+
+  release-arch-pkgbuild:
+    name: Release Arch PKGBUILD
+    runs-on: ubuntu-22.04
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Install build tooling
+        run: |
+          set -eux
+          pacman -Syu --noconfirm
+          pacman -S --noconfirm --needed rust git jq openssl gnupg openssh
+
+      - name: Create non-root builder user
+        run: |
+          set -eux
+          # makepkg refuses to run as root, same restriction as Alpine's abuild.
+          useradd -m builder
+          chown -R builder:builder /home/builder
+
+      - name: Checkout
+        run: |
+          set -eux
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git clone --no-checkout "https://github.com/${GITHUB_REPOSITORY}.git" "$GITHUB_WORKSPACE"
+          cd "$GITHUB_WORKSPACE"
+          git checkout --force "$GITHUB_SHA"
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+
+      - name: Resolve package metadata
+        id: meta
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" = "$GITHUB_REF_NAME" ] || [ -z "$VERSION" ]; then
+            VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "tarminal") | .version' | head -n1)"
+          fi
+          META="$(cargo metadata --no-deps --format-version 1)"
+          {
+            echo "version=$VERSION"
+            echo "ti_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tar-install") | .description // "Installer for Linux app tarballs"')"
+            echo "tm_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .description // "CLI frontend for tar-install"')"
+            echo "license=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .license // "MIT"')"
+            echo "homepage=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .homepage // "https://github.com/TamKungZ/tarminal"')"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Generate PKGBUILDs
+        run: |
+          set -eux
+          cd "$GITHUB_WORKSPACE"
+          mkdir -p archlinux/tar-install archlinux/tarminal
+
+          gen() {
+            local pkgname="$1" desc="$2" outdir="$3"
+            sed \
+              -e "s|__PKGNAME__|$pkgname|g" \
+              -e "s|__VERSION__|${{ steps.meta.outputs.version }}|g" \
+              -e "s|__PKGDESC__|$desc|g" \
+              -e "s|__HOMEPAGE__|${{ steps.meta.outputs.homepage }}|g" \
+              -e "s|__LICENSE__|${{ steps.meta.outputs.license }}|g" \
+              -e "s|__MAINTAINER_EMAIL__|release@tamkungz.me|g" \
+              -e "s|__REPO_ROOT__|$GITHUB_WORKSPACE|g" \
+              archlinux/PKGBUILD.template > "$outdir/PKGBUILD"
+          }
+
+          gen tar-install "${{ steps.meta.outputs.ti_desc }}" archlinux/tar-install
+          gen tarminal "${{ steps.meta.outputs.tm_desc }}" archlinux/tarminal
+          chown -R builder:builder archlinux
+
+      - name: Build .pkg.tar.zst packages
+        run: |
+          set -eux
+          mkdir -p "$GITHUB_WORKSPACE/dist-repo/plain"
+          for pkg in tar-install tarminal; do
+            su builder -c "cd '$GITHUB_WORKSPACE/archlinux/$pkg' && makepkg --clean --noconfirm"
+            cp "$GITHUB_WORKSPACE"/archlinux/"$pkg"/*.pkg.tar.zst "$GITHUB_WORKSPACE/dist-repo/plain/"
+          done
+
+      - name: Smoke test pacman install
+        run: |
+          set -eux
+          pacman -U --noconfirm "$GITHUB_WORKSPACE"/dist-repo/plain/tar-install-*.pkg.tar.zst
+          pacman -U --noconfirm "$GITHUB_WORKSPACE"/dist-repo/plain/tarminal-*.pkg.tar.zst
+          tar-install || true
+          tarminal --help
+          pacman -R --noconfirm tar-install tarminal
+
+      # Reuses the same GPG_PRIVATE_KEY/GPG_PASSPHRASE secrets as the deb/rpm
+      # jobs, since pacman repo databases are signed with plain GPG detached
+      # signatures — unlike Alpine/Void, no separate key format is needed.
+      - name: Build signed pacman repo
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY secret is required for pacman repo signing."
+            exit 1
+          fi
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+          GPG_FINGERPRINT="$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')"
+
+          mkdir -p "$GITHUB_WORKSPACE/dist-repo/arch/x86_64"
+          cp "$GITHUB_WORKSPACE"/dist-repo/plain/*.pkg.tar.zst "$GITHUB_WORKSPACE/dist-repo/arch/x86_64/"
+          cd "$GITHUB_WORKSPACE/dist-repo/arch/x86_64"
+
+          if [ -n "${GPG_PASSPHRASE:-}" ]; then
+            export GPG_TTY=$(tty || true)
+            gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" --export-secret-keys "$GPG_FINGERPRINT" > /tmp/repo-add-key.gpg || true
+          fi
+
+          repo-add --sign --key "$GPG_FINGERPRINT" tamkungz.db.tar.gz *.pkg.tar.zst
+
+          # Static hosts sometimes handle pacman repo symlinks badly.
+          # Make repo-add symlinks real files so /tamkungz.db and /tamkungz.db.sig always work.
+          find "$GITHUB_WORKSPACE/dist-repo/arch/x86_64" -type l -print0 | while IFS= read -r -d '' link; do
+            target="$(readlink -f "$link")"
+            rm "$link"
+            cp "$target" "$link"
+          done
+
+      - name: Push PKGBUILD to AUR
+        continue-on-error: true
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${AUR_SSH_PRIVATE_KEY:-}" ]; then
+            echo "::notice::AUR_SSH_PRIVATE_KEY is missing; skipping AUR publish."
+            exit 0
+          fi
+
+          mkdir -p ~/.ssh
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > ~/.ssh/aur
+          chmod 600 ~/.ssh/aur
+
+          if ! ssh-keyscan -T 10 -H aur.archlinux.org >> ~/.ssh/known_hosts 2>/dev/null; then
+            echo "::warning::Could not fetch aur.archlinux.org SSH host key; skipping AUR publish."
+            exit 0
+          fi
+
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          SSH_CMD="ssh -i ~/.ssh/aur -o IdentitiesOnly=yes -o BatchMode=yes -o ConnectTimeout=15 -o ServerAliveInterval=15 -o ServerAliveCountMax=2"
+
+          for pkg in tar-install tarminal; do
+            echo "== AUR publish: $pkg =="
+
+            AUR_DIR="$(mktemp -d)"
+
+            if ! GIT_SSH_COMMAND="$SSH_CMD" git clone "ssh://aur@aur.archlinux.org/${pkg}.git" "$AUR_DIR"; then
+              echo "::warning::$pkg: cannot clone AUR repo; skipping this package."
+              rm -rf "$AUR_DIR"
+              continue
+            fi
+
+            cp "$GITHUB_WORKSPACE/archlinux/$pkg/PKGBUILD" "$AUR_DIR/PKGBUILD"
+
+            if ! ( cd "$AUR_DIR" && su builder -c "cd '$AUR_DIR' && makepkg --printsrcinfo" > "$AUR_DIR/.SRCINFO" ); then
+              echo "::warning::$pkg: failed to generate .SRCINFO; skipping this package."
+              rm -rf "$AUR_DIR"
+              continue
+            fi
+
+            cd "$AUR_DIR"
+            git add PKGBUILD .SRCINFO
+
+            if git diff --cached --quiet; then
+              echo "$pkg: no AUR changes to push."
+            else
+              git commit -m "Update to ${{ steps.meta.outputs.version }}"
+
+              if ! GIT_SSH_COMMAND="$SSH_CMD" git push origin HEAD:master; then
+                echo "::warning::$pkg: AUR push failed; skipping this package."
+              fi
+            fi
+
+            rm -rf "$AUR_DIR"
+          done
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist-arch-pkgbuild
+          path: dist-repo/
+
+  publish-release:
+    name: Publish package repositories & GitHub Release
+    runs-on: ubuntu-22.04
+    # Requires ALL build jobs to succeed (GitHub Actions' default behavior
+    # for a job with `needs:`). This is deliberate: we don't want a half
+    # published release if, say, the Void build failed.
+    needs:
+      - release-linux-x64
+      - release-alpine-apk
+      - release-void-xbps
+      - release-arch-pkgbuild
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Install repo tooling
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y apt-utils createrepo-c dpkg-dev gnupg git
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: "dist-*"
+          path: artifacts
+
+      - name: Import GPG key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GPG_PRIVATE_KEY:-}" ]; then
+            echo "GPG_PRIVATE_KEY secret is required for release signing and package repo publishing."
+            exit 1
+          fi
+
+          printf '%s' "$GPG_PRIVATE_KEY" | gpg --batch --import
+
+          GPG_FINGERPRINT="$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')"
+
+          if [ -z "$GPG_FINGERPRINT" ]; then
+            echo "Could not detect GPG fingerprint."
+            exit 1
+          fi
+
+          echo "GPG_FINGERPRINT=$GPG_FINGERPRINT" >> "$GITHUB_ENV"
+
+      - name: Publish package repositories
         env:
           PACKAGES_REPO_TOKEN: ${{ secrets.PACKAGES_REPO_TOKEN }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
@@ -244,7 +758,7 @@ jobs:
           echo "packages.tamkungz.me" > CNAME
           touch .nojekyll
 
-          rm -rf apt rpm tarminal
+          rm -rf apt rpm apk xbps arch apps
 
           gpg --armor --export "$GPG_FINGERPRINT" > gpg.key
 
@@ -255,12 +769,12 @@ jobs:
 
           cat > apps/tarminal/README.md <<'EOF'
           # Tarminal
-          
+
           Tarminal is a CLI frontend for tar-install. It installs Linux app tarballs with commands, icons, desktop entries, and uninstall tracking.
           EOF
 
-          cp "$WORK_DIR"/target/debian/tar-install_*.deb apt/pool/main/t/tar-install/
-          cp "$WORK_DIR"/target/debian/tarminal_*.deb apt/pool/main/t/tarminal/
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tar-install_*.deb apt/pool/main/t/tar-install/
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tarminal_*.deb apt/pool/main/t/tarminal/
 
           cd "$SITE_DIR/apt"
 
@@ -306,8 +820,8 @@ jobs:
           cd "$SITE_DIR"
 
           mkdir -p rpm/x86_64
-          cp "$WORK_DIR"/target/generate-rpm/tar-install-*.rpm rpm/x86_64/
-          cp "$WORK_DIR"/target/generate-rpm/tarminal-*.rpm rpm/x86_64/
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tar-install-*.rpm rpm/x86_64/
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tarminal-*.rpm rpm/x86_64/
 
           createrepo_c rpm/x86_64
 
@@ -327,6 +841,15 @@ jobs:
               rpm/x86_64/repodata/repomd.xml
           fi
 
+          # Alpine APK, Void XBPS, and the Arch pacman repo are already built
+          # and signed inside their own jobs (abuild key, xbps-rindex RSA
+          # key, and the same GPG key respectively) — this step only copies
+          # the finished repo trees into place.
+          mkdir -p apk xbps arch
+          cp -r "$WORK_DIR"/artifacts/dist-alpine-apk/apk/. apk/
+          cp -r "$WORK_DIR"/artifacts/dist-void-xbps/xbps/. xbps/
+          cp -r "$WORK_DIR"/artifacts/dist-arch-pkgbuild/arch/. arch/
+
           if [ -f scripts/generate-package-indexes.py ]; then
             python3 scripts/generate-package-indexes.py
           else
@@ -342,14 +865,18 @@ jobs:
             git push origin HEAD
           fi
 
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v7
-        with:
-          name: tarminal-linux-x86_64-gnu-release
-          path: dist/
+      - name: Assemble GitHub Release assets
+        run: |
+          set -eux
+          mkdir -p release-assets
+          cp artifacts/dist-linux-x64/* release-assets/ 2>/dev/null || true
+          cp artifacts/dist-alpine-apk/plain/* release-assets/ 2>/dev/null || true
+          cp artifacts/dist-void-xbps/plain/* release-assets/ 2>/dev/null || true
+          cp artifacts/dist-arch-pkgbuild/plain/* release-assets/ 2>/dev/null || true
+          rm -f release-assets/SHA256SUMS
+          ( cd release-assets && sha256sum * > SHA256SUMS )
 
       - name: Create or update GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -358,9 +885,9 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
 
           if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --clobber
+            gh release upload "$TAG" release-assets/* --clobber
           else
-            gh release create "$TAG" dist/* \
+            gh release create "$TAG" release-assets/* \
               --title "Tarminal ${TAG}" \
               --notes "Release ${TAG}"
           fi

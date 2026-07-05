@@ -1,0 +1,28 @@
+# Maintainer: TamKungZ_ <__MAINTAINER_EMAIL__>
+# NOTE: generated from archlinux/PKGBUILD.template by the release workflow.
+# builddir-equivalent: we cd straight into the already-checked-out repo
+# instead of using source=(), so this always builds the exact commit/tag
+# the workflow is running on. The same PKGBUILD (built from source) is
+# pushed to AUR, so pacman-repo users and AUR users get identical builds.
+pkgname=__PKGNAME__
+pkgver=__VERSION__
+pkgrel=0
+pkgdesc="__PKGDESC__"
+url="__HOMEPAGE__"
+arch=('x86_64')
+license=('__LICENSE__')
+makedepends=('cargo' 'rust')
+options=('!lto')
+source=()
+sha256sums=()
+
+_repo_root="__REPO_ROOT__"
+
+build() {
+	cd "$_repo_root"
+	cargo build --release --locked -p __PKGNAME__ --bin __PKGNAME__
+}
+
+package() {
+	install -Dm755 "$_repo_root/target/release/__PKGNAME__" "$pkgdir/usr/bin/__PKGNAME__"
+}

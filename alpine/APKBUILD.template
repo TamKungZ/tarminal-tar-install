@@ -1,0 +1,24 @@
+# Maintainer: TamKungZ_ <__MAINTAINER_EMAIL__>
+# NOTE: generated from alpine/APKBUILD.template by the release workflow.
+# builddir points straight at the already-checked-out repo (two levels up
+# from alpine/<pkgname>/) instead of fetching a source tarball, so this
+# always builds the exact commit/tag the workflow is running on.
+pkgname=__PKGNAME__
+pkgver=__VERSION__
+pkgrel=0
+pkgdesc="__PKGDESC__"
+url="__HOMEPAGE__"
+arch="x86_64"
+license="__LICENSE__"
+options="!check net"
+source=""
+builddir="$startdir/../.."
+
+build() {
+	cd "$builddir"
+	cargo build --release --locked -p __PKGNAME__ --bin __PKGNAME__
+}
+
+package() {
+	install -Dm755 "$builddir"/target/release/__PKGNAME__ "$pkgdir"/usr/bin/__PKGNAME__
+}
