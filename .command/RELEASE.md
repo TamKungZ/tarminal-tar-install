@@ -9,3 +9,7 @@ strip -s target/release/tarminal
 
 cargo generate-rpm -p crates/tar-install
 cargo generate-rpm -p crates/tarminal
+
+git tag v*
+git push
+git push origin v*
