@@ -8,7 +8,7 @@ resolver = "2"
 [workspace.package]
 edition = "2021"
 license = "MIT"
-repository = "https://example.invalid/tarminal"
+repository = "https://github.com/TamKungZ/tarminal-tar-install"
 
 [workspace.dependencies]
 anyhow = "1"
