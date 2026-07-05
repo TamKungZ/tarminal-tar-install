@@ -7,7 +7,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::io::Read;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::{self as unix_fs, PermissionsExt};
 use std::path::{Path, PathBuf};
 use tar::Archive;
 use tempfile::tempdir;
@@ -238,14 +238,13 @@ fn safe_extract_to(archive_path: &Path, dest: &Path) -> Result<()> {
         let mut entry = entry.context("failed to read tar entry")?;
         let entry_type = entry.header().entry_type();
         let raw_path = entry.path().context("failed to read tar entry path")?.to_path_buf();
+
         if let Some(reason) = unsafe_path_reason(&raw_path) {
             bail!("unsafe path in archive: {} ({})", raw_path.display(), reason);
         }
-        if entry_type.is_symlink() || entry_type.is_hard_link() {
-            bail!("refusing to extract link entry for safety in prototype: {}", raw_path.display());
-        }
 
         let out_path = dest.join(&raw_path);
+
         if entry_type.is_dir() {
             fs::create_dir_all(&out_path)?;
         } else if entry_type.is_file() {
@@ -257,17 +256,93 @@ fn safe_extract_to(archive_path: &Path, dest: &Path) -> Result<()> {
             std::io::copy(&mut entry, &mut out)?;
             let mode = entry.header().mode().unwrap_or(0o644);
             fs::set_permissions(&out_path, fs::Permissions::from_mode(mode & 0o777))?;
+        } else if entry_type.is_symlink() {
+            let link_target = entry
+                .link_name()
+                .context("failed to read symlink target")?
+                .ok_or_else(|| anyhow!("symlink entry has no target: {}", raw_path.display()))?
+                .into_owned();
+
+            validate_safe_symlink(&raw_path, &link_target)?;
+
+            if let Some(parent) = out_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            if fs::symlink_metadata(&out_path).is_ok() {
+                bail!("refusing to overwrite existing path with symlink: {}", raw_path.display());
+            }
+
+            unix_fs::symlink(&link_target, &out_path)
+                .with_context(|| format!("failed to create symlink: {} -> {}", raw_path.display(), link_target.display()))?;
+        } else if entry_type.is_hard_link() {
+            bail!("hard link entries are not supported yet: {}", raw_path.display());
         }
     }
+
     Ok(())
+}
+
+fn validate_safe_symlink(link_path: &Path, target: &Path) -> Result<()> {
+    if target.is_absolute() {
+        bail!(
+            "unsafe symlink target in archive: {} -> {} (absolute target)",
+            link_path.display(),
+            target.display()
+        );
+    }
+
+    let base = link_path.parent().unwrap_or_else(|| Path::new(""));
+    let resolved = normalize_relative_path(&base.join(target)).ok_or_else(|| {
+        anyhow!(
+            "unsafe symlink target in archive: {} -> {} (escapes archive root)",
+            link_path.display(),
+            target.display()
+        )
+    })?;
+
+    if resolved.as_os_str().is_empty() {
+        bail!(
+            "unsafe symlink target in archive: {} -> {} (empty target)",
+            link_path.display(),
+            target.display()
+        );
+    }
+
+    Ok(())
+}
+
+fn normalize_relative_path(path: &Path) -> Option<PathBuf> {
+    let mut normalized = PathBuf::new();
+
+    for component in path.components() {
+        match component {
+            std::path::Component::Normal(part) => normalized.push(part),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                if !normalized.pop() {
+                    return None;
+                }
+            }
+            std::path::Component::RootDir | std::path::Component::Prefix(_) => return None,
+        }
+    }
+
+    Some(normalized)
 }
 
 fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
     fs::create_dir_all(dst)?;
-    for entry in WalkDir::new(src) {
+
+    for entry in WalkDir::new(src).follow_links(false) {
         let entry = entry?;
         let rel = entry.path().strip_prefix(src)?;
+        if rel.as_os_str().is_empty() {
+            continue;
+        }
+
         let to = dst.join(rel);
+
         if entry.file_type().is_dir() {
             fs::create_dir_all(&to)?;
         } else if entry.file_type().is_file() {
@@ -278,8 +353,24 @@ fn copy_dir_all(src: &Path, dst: &Path) -> Result<()> {
                 .with_context(|| format!("failed to copy {} to {}", entry.path().display(), to.display()))?;
             let perms = fs::metadata(entry.path())?.permissions();
             fs::set_permissions(&to, perms)?;
+        } else if entry.file_type().is_symlink() {
+            if let Some(parent) = to.parent() {
+                fs::create_dir_all(parent)?;
+            }
+
+            let target = fs::read_link(entry.path())
+                .with_context(|| format!("failed to read symlink: {}", entry.path().display()))?;
+
+            if fs::symlink_metadata(&to).is_ok() {
+                fs::remove_file(&to)
+                    .with_context(|| format!("failed to replace existing symlink target: {}", to.display()))?;
+            }
+
+            unix_fs::symlink(&target, &to)
+                .with_context(|| format!("failed to copy symlink {} -> {}", to.display(), target.display()))?;
         }
     }
+
     Ok(())
 }
 
