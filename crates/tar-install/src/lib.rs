@@ -6,6 +6,7 @@
 pub mod archive;
 pub mod desktop;
 pub mod filename;
+pub mod version;
 pub mod install;
 pub mod paths;
 pub mod recipe;

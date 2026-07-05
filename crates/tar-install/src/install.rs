@@ -21,6 +21,7 @@ pub struct InstallPlan {
     pub app_id: String,
     pub app_name: String,
     pub version: Option<String>,
+    pub probe_version: bool,
     pub exec_path_inside_app: PathBuf,
     pub command_name: String,
     pub icon_path_inside_app: Option<PathBuf>,
@@ -87,6 +88,10 @@ pub fn make_plan(archive_path: &Path, scope: InstallScope, input: &InstallInput)
         .or_else(|| recipe.and_then(|r| r.version.clone()))
         .or_else(|| inspection.filename_guess.version.clone());
 
+    let probe_version = input.probe_version
+        .or_else(|| recipe.and_then(|r| r.probe_version))
+        .unwrap_or(true);
+
     let exec_from_input = input.exec.clone().or_else(|| recipe.and_then(|r| r.exec.clone()));
     let exec_path_inside_app = if let Some(exec) = exec_from_input {
         PathBuf::from(exec)
@@ -115,6 +120,7 @@ pub fn make_plan(archive_path: &Path, scope: InstallScope, input: &InstallInput)
         app_id,
         app_name,
         version,
+        probe_version,
         exec_path_inside_app,
         command_name,
         icon_path_inside_app,
@@ -137,7 +143,7 @@ pub fn install_archive_with_progress(
 ) -> Result<InstallReport> {
     emit_progress(progress, InstallProgress::Planning);
 
-    let (plan, inspection) = make_plan(archive_path, scope, &input)?;
+    let (mut plan, inspection) = make_plan(archive_path, scope, &input)?;
 
     if plan.targets.app_dir.exists() && !input.force {
         bail!("install directory already exists: {} (use --force to overwrite)", plan.targets.app_dir.display());
@@ -168,6 +174,29 @@ pub fn install_archive_with_progress(
         bail!("resolved executable does not exist after extraction: {}", exec_abs.display());
     }
     ensure_executable(&exec_abs)?;
+
+    if plan.version.is_none() && plan.probe_version {
+        emit_progress(progress, InstallProgress::Integrating { step: "detecting version" });
+
+        match crate::version::detect_installed_version(
+            &plan.targets.app_dir,
+            &plan.exec_path_inside_app,
+            &plan.command_name,
+            &plan.app_id,
+            &plan.app_name,
+        ) {
+            Ok(Some(found)) => {
+                plan.notes.push(format!("version detected from {}", found.source));
+                plan.version = Some(found.version);
+            }
+            Ok(None) => {
+                plan.notes.push("version could not be detected from metadata or command probes".to_string());
+            }
+            Err(err) => {
+                plan.notes.push(format!("version probe failed: {err:#}"));
+            }
+        }
+    }
 
     emit_progress(progress, InstallProgress::Integrating { step: "writing command wrapper" });
     write_wrapper(&plan.targets.command_path, &plan.targets.app_dir, &exec_abs)?;
