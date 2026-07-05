@@ -402,16 +402,34 @@ jobs:
         run: |
           set -eux
           cd "$GITHUB_WORKSPACE"
+
           VERSION="${GITHUB_REF_NAME#v}"
           if [ "$VERSION" = "$GITHUB_REF_NAME" ] || [ -z "$VERSION" ]; then
             VERSION="$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "tarminal") | .version' | head -n1)"
           fi
+
           META="$(cargo metadata --no-deps --format-version 1)"
+
+          get_pkg_field() {
+            local pkg="$1" field="$2" fallback="$3"
+            printf '%s' "$META" | jq -r \
+              --arg pkg "$pkg" \
+              --arg field "$field" \
+              --arg fallback "$fallback" \
+              '.packages[]
+               | select(.name == $pkg)
+               | (.[$field] // "")
+               | gsub("[\r\n\t]+"; " ")
+               | gsub("  +"; " ")
+               | if . == "" then $fallback else . end' \
+              | head -n1
+          }
+
           {
             echo "version=$VERSION"
-            echo "ti_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tar-install") | .description // "Installer for Linux app tarballs"')"
-            echo "tm_desc=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .description // "CLI frontend for tar-install"')"
-            echo "homepage=$(echo "$META" | jq -r '.packages[] | select(.name == "tarminal") | .homepage // "https://github.com/TamKungZ/tarminal"')"
+            echo "ti_desc=$(get_pkg_field tar-install description "Install and manage Linux apps from tar archives")"
+            echo "tm_desc=$(get_pkg_field tarminal description "Terminal frontend for tar-install")"
+            echo "homepage=$(get_pkg_field tarminal homepage "https://github.com/${GITHUB_REPOSITORY}")"
           } >> "$GITHUB_OUTPUT"
 
       - name: Build release binaries
@@ -437,6 +455,9 @@ jobs:
           build_pkg() {
             local pkgname="$1" bin="$2" desc="$3"
             local destdir
+            if [ -z "$desc" ]; then
+              desc="$pkgname package"
+            fi
             destdir="$(mktemp -d)"
             install -Dm755 "target/release/$bin" "$destdir/usr/bin/$bin"
             xbps-create \
