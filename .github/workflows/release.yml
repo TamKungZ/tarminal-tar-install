@@ -193,19 +193,25 @@ jobs:
           echo "packages.tamkungz.me" > CNAME
           touch .nojekyll
 
-          rm -rf tarminal/apt tarminal/rpm
+          rm -rf apt rpm tarminal
 
-          mkdir -p tarminal
-          gpg --armor --export "$GPG_FINGERPRINT" > tarminal/gpg.key
+          gpg --armor --export "$GPG_FINGERPRINT" > gpg.key
 
-          mkdir -p tarminal/apt/pool/main/t/tar-install
-          mkdir -p tarminal/apt/pool/main/t/tarminal
-          mkdir -p tarminal/apt/dists/stable/main/binary-amd64
+          mkdir -p apt/pool/main/t/tar-install
+          mkdir -p apt/pool/main/t/tarminal
+          mkdir -p apt/dists/stable/main/binary-amd64
+          mkdir -p apps/tarminal
 
-          cp "$WORK_DIR"/target/debian/tar-install_*.deb tarminal/apt/pool/main/t/tar-install/
-          cp "$WORK_DIR"/target/debian/tarminal_*.deb tarminal/apt/pool/main/t/tarminal/
+          cat > apps/tarminal/README.md <<'EOF'
+          # Tarminal
+          
+          Tarminal is a CLI frontend for tar-install. It installs Linux app tarballs with commands, icons, desktop entries, and uninstall tracking.
+          EOF
 
-          cd "$SITE_DIR/tarminal/apt"
+          cp "$WORK_DIR"/target/debian/tar-install_*.deb apt/pool/main/t/tar-install/
+          cp "$WORK_DIR"/target/debian/tarminal_*.deb apt/pool/main/t/tarminal/
+
+          cd "$SITE_DIR/apt"
 
           dpkg-scanpackages --arch amd64 pool > dists/stable/main/binary-amd64/Packages
           gzip -9fk dists/stable/main/binary-amd64/Packages
@@ -217,7 +223,7 @@ jobs:
             -o APT::FTPArchive::Release::Codename="stable" \
             -o APT::FTPArchive::Release::Architectures="amd64" \
             -o APT::FTPArchive::Release::Components="main" \
-            -o APT::FTPArchive::Release::Description="TamKungZ_ Tarminal APT Repository" \
+            -o APT::FTPArchive::Release::Description="TamKungZ_ APT Package Repository" \
             release dists/stable > dists/stable/Release
 
           if [ -n "${GPG_PASSPHRASE:-}" ]; then
@@ -248,11 +254,11 @@ jobs:
 
           cd "$SITE_DIR"
 
-          mkdir -p tarminal/rpm/x86_64
-          cp "$WORK_DIR"/target/generate-rpm/tar-install-*.rpm tarminal/rpm/x86_64/
-          cp "$WORK_DIR"/target/generate-rpm/tarminal-*.rpm tarminal/rpm/x86_64/
+          mkdir -p rpm/x86_64
+          cp "$WORK_DIR"/target/generate-rpm/tar-install-*.rpm rpm/x86_64/
+          cp "$WORK_DIR"/target/generate-rpm/tarminal-*.rpm rpm/x86_64/
 
-          createrepo_c tarminal/rpm/x86_64
+          createrepo_c rpm/x86_64
 
           if [ -n "${GPG_PASSPHRASE:-}" ]; then
             gpg --batch --yes \
@@ -261,13 +267,13 @@ jobs:
               --default-key "$GPG_FINGERPRINT" \
               --detach-sign \
               --armor \
-              tarminal/rpm/x86_64/repodata/repomd.xml
+              rpm/x86_64/repodata/repomd.xml
           else
             gpg --batch --yes \
               --default-key "$GPG_FINGERPRINT" \
               --detach-sign \
               --armor \
-              tarminal/rpm/x86_64/repodata/repomd.xml
+              rpm/x86_64/repodata/repomd.xml
           fi
 
           if [ -f scripts/generate-package-indexes.py ]; then

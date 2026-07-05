@@ -5,7 +5,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "CLI frontend for tar-install. Installs Linux app tarballs with commands, icons, and desktop entries."
-homepage = "https://github.com/TamKungZ/tarminal-tar-install"
+homepage = "https://packages.tamkungz.me/apps/tarminal/"
+readme = "../../README.md"
 
 [package.metadata.deb]
 section = "utils"
@@ -17,6 +18,7 @@ Tarminal installs Linux .tar, .tar.gz, and .tar.xz application archives into a p
 """
 
 [package.metadata.generate-rpm]
+summary = "CLI frontend for tar-install"
 assets = [
   { source = "../../target/release/tarminal", dest = "/usr/bin/tarminal", mode = "755" },
 ]

@@ -5,7 +5,8 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Library core for safely installing Linux app tarballs into desktop-friendly locations."
-homepage = "https://github.com/TamKungZ/tarminal-tar-install"
+homepage = "https://packages.tamkungz.me/apps/tarminal/"
+readme = "../../README.md"
 
 [package.metadata.deb]
 section = "utils"
@@ -18,6 +19,7 @@ This package provides the tar-install command stub and shared project identity.
 """
 
 [package.metadata.generate-rpm]
+summary = "Core library package for Tarminal"
 assets = [
   { source = "../../target/release/tar-install", dest = "/usr/bin/tar-install", mode = "755" },
 ]
