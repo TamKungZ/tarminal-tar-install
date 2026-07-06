@@ -892,10 +892,10 @@ jobs:
           cp -r "$WORK_DIR"/artifacts/dist-void-xbps/xbps/. xbps/
           cp -r "$WORK_DIR"/artifacts/dist-arch-pkgbuild/arch/. arch/
 
-          if [ -f scripts/generate-package-indexes.py ]; then
-            python3 scripts/generate-package-indexes.py
+          if [ -f scripts/build_site.py ]; then
+            python3 scripts/build_site.py
           else
-            echo "scripts/generate-package-indexes.py not found; skipping HTML index generation."
+            echo "scripts/build_site.py not found; skipping HTML index generation."
           fi
 
           git add -A
