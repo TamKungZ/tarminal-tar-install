@@ -2,7 +2,7 @@ Source: tarminal-tar-install
 Section: utils
 Priority: optional
 Maintainer: TamKungZ_ <dev@tamkungz.me>
-Build-Depends: debhelper-compat (= 13), cargo-1.88, rustc-1.88, pkg-config, libbz2-dev, liblzma-dev
+Build-Depends: debhelper-compat (= 13), cargo-1.89, rustc-1.89, pkg-config, libbz2-dev, liblzma-dev
 Standards-Version: 4.6.2
 Homepage: https://github.com/TamKungZ/tarminal-tar-install
 
