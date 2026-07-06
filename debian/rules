@@ -1,0 +1,17 @@
+#!/usr/bin/make -f
+export CARGO_HOME = $(CURDIR)/debian/cargo-home
+export CARGO_NET_OFFLINE = true
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	cargo build --release --locked --offline -p tar-install --bin tar-install
+	cargo build --release --locked --offline -p tarminal --bin tarminal
+
+override_dh_auto_install:
+	install -Dm755 target/release/tar-install debian/tar-install/usr/bin/tar-install
+	install -Dm755 target/release/tarminal debian/tarminal/usr/bin/tarminal
+
+override_dh_auto_test:
+	# skip tests on Launchpad build

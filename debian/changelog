@@ -1,0 +1,11 @@
+tarminal-tar-install (0.1.4~noble1) noble; urgency=medium
+
+  * Initial Launchpad release for Noble.
+
+ -- TamKungZ_ <dev@tamkungz.me>  Mon, 06 Jul 2026 12:00:00 +0700
+
+tarminal-tar-install (0.1.4~jammy1) jammy; urgency=medium
+
+  * Initial Launchpad release for Jammy.
+
+ -- TamKungZ_ <dev@tamkungz.me>  Mon, 06 Jul 2026 12:00:00 +0700

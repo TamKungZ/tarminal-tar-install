@@ -11,8 +11,8 @@ readme = "../../README.md"
 [package.metadata.deb]
 section = "utils"
 priority = "optional"
-maintainer = "TamKungZ_ <kitthiwat.phimpromma@proton.me>"
-depends = "tar-install (>= 0.1.0), libc6 (>= 2.34), liblzma5 (>= 5.1.1alpha+20120614), $auto"
+maintainer = "TamKungZ_ <dev@tamkungz.me>"
+depends = "tar-install (>= 0.1.4), libc6 (>= 2.34), liblzma5 (>= 5.1.1alpha+20120614), $auto"
 extended-description = """
 Tarminal installs Linux .tar, .tar.gz, and .tar.xz application archives into a proper desktop-app layout with commands, icons, desktop entries, and uninstall tracking.
 """

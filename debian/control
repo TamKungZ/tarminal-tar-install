@@ -1,0 +1,21 @@
+Source: tarminal-tar-install
+Section: utils
+Priority: optional
+Maintainer: TamKungZ_ <dev@tamkungz.me>
+Build-Depends: debhelper-compat (= 13), cargo, rustc, pkg-config, libbz2-dev, liblzma-dev
+Standards-Version: 4.6.2
+Homepage: https://github.com/TamKungZ/tarminal-tar-install
+
+Package: tar-install
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: Installer for Linux app tarballs
+ tar-install installs and manages Linux applications
+ distributed as tarballs.
+
+Package: tarminal
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: CLI frontend for tar-install
+ tarminal is a terminal frontend for tar-install with
+ uninstall tracking and desktop entry management.
