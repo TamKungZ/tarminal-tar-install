@@ -38,6 +38,14 @@ sudo apt update
 sudo apt install tarminal
 ```
 
+> **Optional:** If you prefer packages built by Launchpad for Ubuntu **Jammy** or **Noble**, you can install from the PPA instead:
+
+```bash
+sudo add-apt-repository ppa:tamkungz/stable
+sudo apt update
+sudo apt install tarminal
+```
+
 ### Fedora / RPM
 
 ```bash

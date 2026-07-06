@@ -1,6 +1,6 @@
 #!/usr/bin/make -f
-export CARGO=/usr/bin/cargo-1.89
-export RUSTC=/usr/bin/rustc-1.89
+export CARGO=/usr/bin/cargo-1.88
+export RUSTC=/usr/bin/rustc-1.88
 export CARGO_HOME = $(CURDIR)/debian/cargo-home
 export CARGO_NET_OFFLINE = true
 
