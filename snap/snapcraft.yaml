@@ -1,17 +1,17 @@
 name: tarminal
 base: core22
-version: '0.1.3'
+version: '0.1.4'
 title: Tarminal
 summary: Install Linux app tarballs into desktop-friendly locations
 description: |
   Tarminal is a CLI frontend for tar-install.
 
-  It installs Linux app tarballs into desktop-friendly locations by creating
+  It installs Linux app tarballs into desktop-friendly user locations by creating
   app directories, command wrappers, desktop entries, icons, install state, and
   clean uninstall support.
 
-  This snap is packaged as classic because Tarminal is a host package/app
-  installer and needs access to normal host paths.
+  This snap is packaged as classic because Tarminal manages applications in the
+  user's normal host desktop environment and needs access to host user paths.
 
 license: MIT
 contact: https://github.com/TamKungZ/tarminal-tar-install/issues

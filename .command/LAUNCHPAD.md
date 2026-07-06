@@ -1,16 +1,11 @@
+kill 17118 2>/dev/null || true
+sleep 2
+find target/ -name '.fuse_hidden*' -delete 2>/dev/null || true
 cargo clean
 rm -rf target/
 
-kill 17118
-sleep 2
-rm -rf target/
-find target/ -name '.fuse_hidden*' -delete
-rm -rf target/
+debuild clean
 
-debuild -S -sa -d
+debuild -S -sa -d -kB64B156379154E5B6C176D0D6157503BFCD109A4
 ls -lh ../tarminal-tar-install_0.1.4~noble1.tar.xz
 ls -lh ../tarminal-tar-install_0.1.4~jammy1.tar.xz
-
-
-debsign -k 6157503BFCD109A4 ../tarminal-tar-install_0.1.4~noble1_source.changes
-dput ppa:tamkungz/stable ../tarminal-tar-install_0.1.4~noble1_source.changes

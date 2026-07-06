@@ -1,4 +1,6 @@
 #!/usr/bin/make -f
+export CARGO=/usr/bin/cargo-1.89
+export RUSTC=/usr/bin/rustc-1.89
 export CARGO_HOME = $(CURDIR)/debian/cargo-home
 export CARGO_NET_OFFLINE = true
 
@@ -6,8 +8,8 @@ export CARGO_NET_OFFLINE = true
 	dh $@
 
 override_dh_auto_build:
-	cargo build --release --locked --offline -p tar-install --bin tar-install
-	cargo build --release --locked --offline -p tarminal --bin tarminal
+	$(CARGO) build --release --locked --offline -p tar-install --bin tar-install
+	$(CARGO) build --release --locked --offline -p tarminal --bin tarminal
 
 override_dh_auto_install:
 	install -Dm755 target/release/tar-install debian/tar-install/usr/bin/tar-install

@@ -1,3 +1,15 @@
+tarminal-tar-install (0.1.4~noble3) noble; urgency=medium
+
+  * Fix debhelper install files for Launchpad build.
+
+ -- TamKungZ_ <dev@tamkungz.me>  Mon, 06 Jul 2026 21:15:05 +0700
+
+tarminal-tar-install (0.1.4~noble2) noble; urgency=medium
+
+  * Use Rust 1.89 toolchain for Launchpad PPA builds.
+
+ -- TamKungZ_ <dev@tamkungz.me>  Mon, 06 Jul 2026 20:00:00 +0700
+
 tarminal-tar-install (0.1.4~noble1) noble; urgency=medium
 
   * Initial Launchpad release for Noble.
