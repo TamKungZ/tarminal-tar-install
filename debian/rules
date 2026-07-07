@@ -8,6 +8,8 @@ export CARGO_NET_OFFLINE = true
 	dh $@
 
 override_dh_auto_build:
+	mkdir -p $(CARGO_HOME)
+	sed 's|directory = "debian/vendor"|directory = "$(CURDIR)/debian/vendor"|' debian/cargo-config > $(CARGO_HOME)/config.toml
 	$(CARGO) build --release --locked --offline -p tar-install --bin tar-install
 	$(CARGO) build --release --locked --offline -p tarminal --bin tarminal
 
