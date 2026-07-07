@@ -7,4 +7,4 @@ rm -rf target/
 debuild clean
 
 debuild -S -sa -d -kB64B156379154E5B6C176D0D6157503BFCD109A4
-dput -f ppa:tamkungz/stable ../tarminal-tar-install_*.*.*~**_source.changes^C
+dput -f ppa:tamkungz/stable ../tarminal-tar-install_*.*.*~**_source.changes
