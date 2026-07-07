@@ -158,11 +158,15 @@ fn executable_candidates(entries: &[ArchiveEntry], guess: &FilenameGuess) -> Vec
     let mut candidates = Vec::new();
 
     for e in entries {
-        if !e.is_file || !e.executable || e.unsafe_reason.is_some() {
+        if !e.is_file || e.unsafe_reason.is_some() {
             continue;
         }
         let file_name = e.path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
-        if looks_like_library_or_helper(file_name) {
+        let app_image = is_app_image(file_name);
+        if !e.executable && !app_image {
+            continue;
+        }
+        if !app_image && looks_like_library_or_helper(file_name) {
             continue;
         }
         let score = score_executable(file_name, &app, &arch, &e.path);
@@ -184,6 +188,10 @@ fn score_executable(file_name: &str, app: &str, arch: &str, path: &Path) -> i32 
     let app_us = app_lower.replace('-', "_");
     let app_dash = app_lower.replace('_', "-");
     let mut score = 1;
+
+    if is_app_image(file_name) {
+        score += 120;
+    }
 
     if !app_lower.is_empty() {
         if lower == app_lower || lower == app_us || lower == app_dash {
@@ -207,7 +215,9 @@ fn score_executable(file_name: &str, app: &str, arch: &str, path: &Path) -> i32 
 }
 
 fn explain_score(file_name: &str, app: &str, arch: &str, score: i32) -> String {
-    if !app.is_empty() && file_name.eq_ignore_ascii_case(app) {
+    if is_app_image(file_name) {
+        "AppImage file".to_string()
+    } else if !app.is_empty() && file_name.eq_ignore_ascii_case(app) {
         "exact filename matches guessed app name".to_string()
     } else if !app.is_empty() && !arch.is_empty() && file_name.to_ascii_lowercase().contains(&arch.to_ascii_lowercase()) {
         "filename contains guessed app and architecture pattern".to_string()
@@ -216,6 +226,10 @@ fn explain_score(file_name: &str, app: &str, arch: &str, score: i32) -> String {
     } else {
         "executable file".to_string()
     }
+}
+
+fn is_app_image(file_name: &str) -> bool {
+    file_name.to_ascii_lowercase().ends_with(".appimage")
 }
 
 fn looks_like_library_or_helper(file_name: &str) -> bool {
@@ -260,4 +274,47 @@ pub fn read_text_entry(path: &Path, entry_path: &Path, max_bytes: u64) -> Result
         }
     }
     Err(anyhow!("entry not found: {}", entry_path.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appimage_is_candidate_without_execute_bit() {
+        let entries = vec![
+            ArchiveEntry {
+                path: PathBuf::from("MyApp/MyApp.AppImage"),
+                is_file: true,
+                is_dir: false,
+                is_symlink: false,
+                executable: false,
+                size: 1024,
+                unsafe_reason: None,
+            },
+            ArchiveEntry {
+                path: PathBuf::from("MyApp/resources/helper"),
+                is_file: true,
+                is_dir: false,
+                is_symlink: false,
+                executable: true,
+                size: 1024,
+                unsafe_reason: None,
+            },
+        ];
+        let guess = FilenameGuess {
+            raw_stem: "myapp".to_string(),
+            app: Some("myapp".to_string()),
+            version: None,
+            os: None,
+            architecture: None,
+            confidence: 0.8,
+            notes: Vec::new(),
+        };
+
+        let candidates = executable_candidates(&entries, &guess);
+
+        assert_eq!(candidates.first().map(|c| c.path.as_path()), Some(Path::new("MyApp/MyApp.AppImage")));
+        assert_eq!(candidates.first().map(|c| c.reason.as_str()), Some("AppImage file"));
+    }
 }

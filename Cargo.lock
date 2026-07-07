@@ -686,7 +686,7 @@ dependencies = [
 
 [[package]]
 name = "tar-install"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "bzip2",
@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "tarminal"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "anyhow",
  "clap",

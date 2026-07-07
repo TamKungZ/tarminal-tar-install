@@ -1,3 +1,10 @@
+tarminal-tar-install (0.1.5~jammy1) jammy; urgency=medium
+
+  * Detect AppImage executables inside tar archives.
+  * Release 0.1.5.
+
+ -- Kitthiwat Phimpromma (TamKungZ_) <dev@tamkungz.me>  Wed, 08 Jul 2026 02:58:35 +0700
+
 tarminal-tar-install (0.1.4~jammy2) jammy; urgency=medium
 
   * Fix Rust Version

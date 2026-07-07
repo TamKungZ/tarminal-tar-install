@@ -1,6 +1,6 @@
 [package]
 name = "tar-install"
-version = "0.1.4"
+version = "0.1.5"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -12,7 +12,7 @@ readme = "../../README.md"
 section = "utils"
 priority = "optional"
 maintainer = "TamKungZ_ <dev@tamkungz.me>"
-depends = "libc6 (>= 2.34), liblzma5 (>= 5.1.1alpha+20120614), tar-install (>= 0.1.4), $auto"
+depends = "libc6 (>= 2.34), liblzma5 (>= 5.1.1alpha+20120614), tar-install (>= 0.1.5), $auto"
 extended-description = """
 Core package for Tarminal.
 This package provides the tar-install command stub and shared project identity.
