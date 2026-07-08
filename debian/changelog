@@ -1,9 +1,17 @@
+tarminal-tar-install (0.1.5~jammy3) jammy; urgency=medium
+
+  * Detect AppImage executables inside tar archives.
+  * Release 0.1.5.
+  * Fix the launchpad error.
+
+ -- TamKungZ_ <dev@tamkungz.me>  Wed, 08 Jul 2026 02:58:35 +0700
+
 tarminal-tar-install (0.1.5~noble2) noble; urgency=medium
 
   * Detect AppImage executables inside tar archives.
   * Release 0.1.5.
 
- -- TamKungZ_ <dev@tamkungz.me> <dev@tamkungz.me>  Wed, 08 Jul 2026 02:58:35 +0700
+ -- TamKungZ_ <dev@tamkungz.me>  Wed, 08 Jul 2026 02:58:35 +0700
 
 tarminal-tar-install (0.1.5~jammy2) jammy; urgency=medium
 
