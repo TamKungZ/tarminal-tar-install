@@ -931,3 +931,35 @@ jobs:
           fi
         env:
           GH_TOKEN: ${{ github.token }}
+
+      - name: Checkout release source for pylib pointer
+        uses: actions/checkout@v6
+        with:
+          path: source
+
+      - name: Trigger PyPI publish
+        env:
+          GH_TOKEN: ${{ secrets.PYLIB_WORKFLOW_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "::notice::PYLIB_WORKFLOW_TOKEN is missing; skipping PyPI publish trigger."
+            exit 0
+          fi
+
+          PYLIB_REF="$(git -C source ls-tree HEAD pylib-tar-install | awk '{ print $3 }')"
+
+          if [ -z "$PYLIB_REF" ]; then
+            echo "::warning::Could not resolve pylib-tar-install submodule pointer; skipping PyPI publish trigger."
+            exit 0
+          fi
+
+          gh api \
+            --method POST \
+            repos/TamKungZ/pylib-tar-install/dispatches \
+            -f event_type=publish-pypi \
+            -f client_payload[main_ref]="${GITHUB_REF_NAME}" \
+            -f client_payload[main_sha]="${GITHUB_SHA}" \
+            -f client_payload[pylib_ref]="${PYLIB_REF}" \
+            -f client_payload[source_repo]="${GITHUB_REPOSITORY}"
