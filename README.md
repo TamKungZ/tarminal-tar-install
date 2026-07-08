@@ -139,6 +139,13 @@ Release artifacts are also published on GitHub:
 - `SHA256SUMS`
 - detached GPG signatures (`.asc`)
 
+### Developer Packages
+
+For developers who want to build on the installer core directly:
+
+- Python: [`tar-install` on PyPI](https://pypi.org/project/tar-install/) provides bindings around the shared library, so Python applications and tools can reuse and extend the installer behavior.
+- Rust: `tar-install` is published as a Cargo crate, allowing Rust applications to use the API directly instead of shelling out to the `tarminal` CLI.
+
 ## Usage
 
 Inspect a tarball before installing:
