@@ -1,3 +1,12 @@
+tarminal-tar-install (0.2.0~jammy1) jammy; urgency=medium
+
+  * Add shared library output for tar-install.
+  * Add C ABI wrapper for Python bindings.
+  * Add pylib-tar-install submodule.
+  * Release 0.2.0.
+
+ -- TamKungZ_ <dev@tamkungz.me>  Wed, 08 Jul 2026 13:14:38 +0700
+
 tarminal-tar-install (0.1.5~jammy3) jammy; urgency=medium
 
   * Detect AppImage executables inside tar archives.
