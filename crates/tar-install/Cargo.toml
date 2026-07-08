@@ -27,6 +27,7 @@ assets = [
 [lib]
 name = "tar_install"
 path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
 
 # Tiny helper binary for users who try to run `tar-install` directly.
 # Real CLI frontend lives in the `tarminal` package.

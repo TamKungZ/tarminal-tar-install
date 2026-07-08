@@ -5,6 +5,7 @@
 
 pub mod archive;
 pub mod desktop;
+pub mod ffi;
 pub mod filename;
 pub mod install;
 pub mod paths;

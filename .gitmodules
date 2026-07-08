@@ -1,0 +1,3 @@
+[submodule "pylib-tar-install"]
+	path = pylib-tar-install
+	url = git@github.com:TamKungZ/pylib-tar-install.git
