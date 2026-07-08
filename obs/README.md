@@ -28,6 +28,21 @@ The spec builds both workspace binaries:
 /usr/bin/tar-install
 ```
 
+## Rust toolchain requirement
+
+This package intentionally requires Rust/Cargo 1.89 or newer:
+
+```text
+cargo >= 1.89
+rust >= 1.89
+```
+
+If an OBS repository only provides an older Rust toolchain, such as the default
+Cargo 1.77 in openSUSE Leap 15.6, the build should be treated as missing build
+dependencies. Add a build path or repository that provides `cargo >= 1.89` and
+`rust >= 1.89` instead of downgrading the lockfile or building with an older
+compiler.
+
 ## Service workflow
 
 `_service` is included as a starter for source generation from Git. It is

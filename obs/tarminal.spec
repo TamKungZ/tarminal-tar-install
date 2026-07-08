@@ -10,9 +10,10 @@ License:        MIT
 URL:            https://github.com/TamKungZ/tarminal-tar-install
 Source0:        %{name}-%{version}.tar.zst
 Source1:        vendor.tar.zst
-BuildRequires:  cargo
-BuildRequires:  rust
+BuildRequires:  cargo >= 1.89
+BuildRequires:  rust >= 1.89
 BuildRequires:  pkgconfig
+BuildRequires:  zstd
 %if 0%{?fedora}
 BuildRequires:  bzip2-devel
 %else
@@ -44,15 +45,19 @@ cargo build --release --locked --offline -p tarminal --bin tarminal
 install -Dm0755 target/release/tar-install %{buildroot}%{_bindir}/tar-install
 install -Dm0755 target/release/tarminal %{buildroot}%{_bindir}/tarminal
 install -Dm0644 LICENSE %{buildroot}%{_licensedir}/%{name}/LICENSE
+install -Dm0644 LICENSE %{buildroot}%{_licensedir}/tar-install/LICENSE
 install -Dm0644 README.md %{buildroot}%{_docdir}/%{name}/README.md
 
 %files
+%dir %{_licensedir}/%{name}
+%dir %{_docdir}/%{name}
 %license %{_licensedir}/%{name}/LICENSE
 %doc %{_docdir}/%{name}/README.md
 %{_bindir}/tarminal
 
 %files -n tar-install
-%license %{_licensedir}/%{name}/LICENSE
+%dir %{_licensedir}/tar-install
+%license %{_licensedir}/tar-install/LICENSE
 %{_bindir}/tar-install
 
 %changelog

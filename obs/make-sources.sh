@@ -20,6 +20,7 @@ git -C "$repo_root" archive --format=tar --prefix="tarminal-$version/" HEAD \
 mkdir -p "$source_dir/.cargo"
 cargo vendor --locked --manifest-path "$source_dir/Cargo.toml" "$source_dir/vendor" \
   > "$source_dir/.cargo/config.toml"
+sed -i 's|directory = ".*"|directory = "vendor"|' "$source_dir/.cargo/config.toml"
 
 tar -C "$source_dir" --zstd -cf "$out_dir/vendor.tar.zst" vendor .cargo
 
