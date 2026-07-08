@@ -727,6 +727,69 @@ jobs:
           name: dist-arch-pkgbuild
           path: dist-repo/
 
+  publish-obs:
+    name: Publish OBS sources
+    runs-on: ubuntu-22.04
+    needs:
+      - release-linux-x64
+      - release-alpine-apk
+      - release-void-xbps
+      - release-arch-pkgbuild
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install OBS tooling
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y jq osc zstd
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Configure osc
+        env:
+          OSC_USERNAME: ${{ secrets.OSC_USERNAME }}
+          OSC_PASSWORD: ${{ secrets.OSC_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OSC_USERNAME:-}" ] || [ -z "${OSC_PASSWORD:-}" ]; then
+            echo "::notice::OSC_USERNAME or OSC_PASSWORD is missing; skipping OBS publish."
+            exit 0
+          fi
+
+          mkdir -p "$HOME/.config/osc"
+          cat > "$HOME/.config/osc/oscrc" <<EOF
+          [general]
+          apiurl = https://api.opensuse.org
+
+          [https://api.opensuse.org]
+          user = ${OSC_USERNAME}
+          pass = ${OSC_PASSWORD}
+          credentials_mgr_class = osc.credentials.PlaintextConfigFileCredentialsManager
+          EOF
+          chmod 600 "$HOME/.config/osc/oscrc"
+
+      - name: Upload OBS sources
+        env:
+          OSC_USERNAME: ${{ secrets.OSC_USERNAME }}
+          OSC_PASSWORD: ${{ secrets.OSC_PASSWORD }}
+          OBS_PROJECT: home:TamKungZ_
+          OBS_PACKAGE: tarminal
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OSC_USERNAME:-}" ] || [ -z "${OSC_PASSWORD:-}" ]; then
+            echo "OBS credentials are missing; skipped."
+            exit 0
+          fi
+
+          VERSION="${GITHUB_REF_NAME#v}"
+          obs/push.sh "$VERSION"
+
   publish-release:
     name: Publish package repositories & GitHub Release
     runs-on: ubuntu-22.04

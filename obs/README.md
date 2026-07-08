@@ -21,6 +21,46 @@ tarminal-0.2.0.tar.zst
 vendor.tar.zst
 ```
 
+## Automatic upload with osc
+
+Install and configure `osc` once:
+
+```bash
+sudo zypper install osc
+osc -A https://api.opensuse.org ls
+```
+
+Then generate and upload OBS sources from the repository root:
+
+```bash
+obs/push.sh 0.2.0
+```
+
+The default OBS target is:
+
+```text
+home:TamKungZ_/tarminal
+```
+
+Override it with environment variables if needed:
+
+```bash
+OBS_PROJECT=home:TamKungZ_ OBS_PACKAGE=tarminal obs/push.sh 0.2.0
+```
+
+## GitHub Actions automation
+
+The release workflow runs `obs/push.sh` automatically for version tags when
+these repository secrets are configured:
+
+```text
+OSC_USERNAME
+OSC_PASSWORD
+```
+
+If either secret is missing, the OBS publish step is skipped without failing the
+release workflow.
+
 The spec builds both workspace binaries:
 
 ```text
