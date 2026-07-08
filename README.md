@@ -6,6 +6,7 @@
 ![Ubuntu](https://img.shields.io/badge/Ubuntu-Supported-E95420?logo=ubuntu&logoColor=white)
 ![Zorin OS](https://img.shields.io/badge/Zorin%20OS-Supported-15A6F0?logo=zorin&logoColor=white)
 ![Fedora](https://img.shields.io/badge/Fedora-Supported-51A2DA?logo=fedora&logoColor=white)
+![openSUSE](https://img.shields.io/badge/openSUSE%20Tumbleweed-Supported-73BA25?logo=opensuse&logoColor=white)
 ![Alpine Linux](https://img.shields.io/badge/Alpine-Supported-0D597F?logo=alpinelinux&logoColor=white)
 ![Void Linux](https://img.shields.io/badge/Void-Supported-478061?logo=voidlinux&logoColor=white)
 ![Arch Linux](https://img.shields.io/badge/Arch-Supported-1793D1?logo=archlinux&logoColor=white)
@@ -61,6 +62,16 @@ EOF
 
 sudo dnf makecache
 sudo dnf install tarminal
+```
+
+### openSUSE Tumbleweed
+
+Packages built by Open Build Service are available for openSUSE Tumbleweed:
+
+```bash
+sudo zypper ar https://download.opensuse.org/repositories/home:/TamKungZ_/openSUSE_Tumbleweed/home:TamKungZ_.repo
+sudo zypper refresh
+sudo zypper install tarminal
 ```
 
 ### Alpine APK
