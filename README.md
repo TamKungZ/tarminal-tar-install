@@ -144,7 +144,7 @@ Release artifacts are also published on GitHub:
 For developers who want to build on the installer core directly:
 
 - Python: [`tar-install` on PyPI](https://pypi.org/project/tar-install/) provides bindings around the shared library, so Python applications and tools can reuse and extend the installer behavior.
-- Rust: `tar-install` is published as a Cargo crate, allowing Rust applications to use the API directly instead of shelling out to the `tarminal` CLI.
+- Rust: [`tar-install` on crates.io](https://crates.io/crates/tar-install) is published as a Cargo crate, allowing Rust applications to use the API directly instead of shelling out to the `tarminal` CLI.
 
 ## Usage
 
