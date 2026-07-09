@@ -146,6 +146,12 @@ For developers who want to build on the installer core directly:
 - Python: [`tar-install` on PyPI](https://pypi.org/project/tar-install/) provides bindings around the shared library, so Python applications and tools can reuse and extend the installer behavior.
 - Rust: [`tar-install` on crates.io](https://crates.io/crates/tar-install) is published as a Cargo crate, allowing Rust applications to use the API directly instead of shelling out to the `tarminal` CLI.
 
+See also:
+
+- [Rust API guide](docs/rust.md)
+- [Python bindings guide](docs/python.md)
+- [Detection heuristics](docs/heuristics.md)
+
 ## Usage
 
 Inspect a tarball before installing:
@@ -298,10 +304,10 @@ Tarminal refuses to install archives with unsafe entries such as:
 
 - absolute paths
 - `..` path traversal
-- symlink entries
+- symlinks that point outside the archive root
 - hard-link entries
 
-The symlink rule is intentionally strict for now. Later versions may support safe symlinks that resolve inside the install directory.
+Relative symlinks are allowed only when they resolve inside the extracted app tree.
 
 ## Build
 
@@ -337,6 +343,8 @@ Library crate:
 ```rust
 use tar_install::install_archive;
 ```
+
+More examples are available in the [Rust API guide](docs/rust.md).
 
 ## Package locally
 
@@ -399,11 +407,21 @@ Repository layout:
 /gpg.key
 /apt
 /rpm/x86_64
+/apk
+/xbps
+/arch
 /apps/tarminal
-/maven
 ```
 
-`/apps/tarminal` is only the landing/documentation page. Package managers install from `/apt` and `/rpm/$basearch`.
+`/apps/tarminal` is only the landing/documentation page. Package managers install from the package-manager-specific repository paths above.
+
+Tagged releases also publish:
+
+- GitHub Release assets
+- OBS sources for openSUSE Tumbleweed
+- AUR `PKGBUILD` updates when AUR credentials are configured
+- `tar-install` on crates.io when `CARGO_REGISTRY_TOKEN` is configured
+- `tar-install` on PyPI through the `pylib-tar-install` workflow when `PYLIB_WORKFLOW_TOKEN` is configured
 
 ## Project shape
 
@@ -411,10 +429,11 @@ Repository layout:
 crates/
   tar-install/
     src/lib.rs          library exports
-    src/main.rs         hint command
+    src/bin/            hint command binary
     src/archive.rs      inspect tarball, detect binary/icon/manifest
     src/filename.rs     parse <app>-<version>-<os>-<arch>
     src/install.rs      install/remove/doctor logic
+    src/ffi.rs          C ABI used by Python bindings
     src/desktop.rs      .desktop generation
     src/paths.rs        user/system install targets
     src/recipe.rs       manifest/recipe schema
@@ -422,6 +441,9 @@ crates/
 
   tarminal/
     src/main.rs         CLI frontend
+
+pylib-tar-install/
+  python/tarinstall/    Python bindings around libtar_install.so
 ```
 
 ## Status

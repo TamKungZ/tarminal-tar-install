@@ -24,9 +24,24 @@ The parser tries to detect:
 Executable detection order:
 
 1. exact executable name matching guessed app
-2. `<app>-<arch>` or `<app>_<arch>`
-3. executable beginning with app name
-4. executable under a `bin/` directory
-5. fallback to interactive `--config`
+2. AppImage files
+3. `<app>-<arch>` or `<app>_<arch>`
+4. executable beginning with app name
+5. executable under a `bin/` directory
+6. fallback to interactive `--config`
 
 When filename detection fails, the tool intentionally degrades into `--config` mode rather than guessing aggressively.
+
+Safety checks reject archives with:
+
+- absolute paths
+- `..` path traversal
+- root or platform prefix paths
+- symlinks that point outside the archive root
+- hard-link entries during installation
+
+Relative symlinks are allowed only when they resolve inside the extracted app
+tree.
+
+Installation also rejects archives that appear to target a different OS or CPU
+architecture unless the caller passes `--force` or sets `InstallInput.force`.
