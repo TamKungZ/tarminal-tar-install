@@ -900,7 +900,7 @@ jobs:
           echo "packages.tamkungz.me" > CNAME
           touch .nojekyll
 
-          rm -rf apt rpm apk xbps arch apps
+          rm -rf apt rpm apk xbps arch
 
           gpg --armor --export "$GPG_FINGERPRINT" > gpg.key
 
