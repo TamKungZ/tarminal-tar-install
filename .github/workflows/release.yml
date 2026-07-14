@@ -902,15 +902,27 @@ jobs:
 
           gpg --armor --export "$GPG_FINGERPRINT" > gpg.key
 
-          rm -rf apt/pool/main/t/tar-install apt/pool/main/t/tarminal apps/tarminal
-          find rpm -type f \( -name 'tar-install-*.rpm' -o -name 'tarminal-*.rpm' \) -delete 2>/dev/null || true
-          find apk -type f \( -name 'tar-install-*.apk' -o -name 'tarminal-*.apk' \) -delete 2>/dev/null || true
-          find xbps -type f \( -name 'tar-install-*.xbps' -o -name 'tarminal-*.xbps' \) -delete 2>/dev/null || true
-          find arch -type f \( -name 'tar-install-*.pkg.tar.zst' -o -name 'tarminal-*.pkg.tar.zst' \) -delete 2>/dev/null || true
+          prune_package_files() {
+            local keep="$1"
+            local pattern="$2"
+            local files=()
+            local remove=()
+
+            mapfile -t files < <(find . -type f -path "$pattern" | sort -V)
+            if [ "${#files[@]}" -le "$keep" ]; then
+              return 0
+            fi
+
+            remove=("${files[@]:0:${#files[@]}-$keep}")
+            for file in "${remove[@]}"; do
+              rm -f "$file" "$file.asc" "$file.sig"
+            done
+          }
 
           mkdir -p apt/pool/main/t/tar-install
           mkdir -p apt/pool/main/t/tarminal
           mkdir -p apt/dists/stable/main/binary-amd64
+          rm -rf apps/tarminal
           mkdir -p apps/tarminal
 
           cat > apps/tarminal/README.md <<'EOF'
@@ -921,10 +933,15 @@ jobs:
 
           cp "$WORK_DIR"/artifacts/dist-linux-x64/tar-install_*.deb apt/pool/main/t/tar-install/
           cp "$WORK_DIR"/artifacts/dist-linux-x64/tarminal_*.deb apt/pool/main/t/tarminal/
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tar-install_*.deb.asc apt/pool/main/t/tar-install/ 2>/dev/null || true
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tarminal_*.deb.asc apt/pool/main/t/tarminal/ 2>/dev/null || true
+
+          prune_package_files 5 './apt/pool/main/t/tar-install/tar-install_*.deb'
+          prune_package_files 5 './apt/pool/main/t/tarminal/tarminal_*.deb'
 
           cd "$SITE_DIR/apt"
 
-          dpkg-scanpackages --arch amd64 pool > dists/stable/main/binary-amd64/Packages
+          dpkg-scanpackages --multiversion --arch amd64 pool > dists/stable/main/binary-amd64/Packages
           gzip -9fk dists/stable/main/binary-amd64/Packages
 
           apt-ftparchive \
@@ -968,6 +985,11 @@ jobs:
           mkdir -p rpm/x86_64
           cp "$WORK_DIR"/artifacts/dist-linux-x64/tar-install-*.rpm rpm/x86_64/
           cp "$WORK_DIR"/artifacts/dist-linux-x64/tarminal-*.rpm rpm/x86_64/
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tar-install-*.rpm.asc rpm/x86_64/ 2>/dev/null || true
+          cp "$WORK_DIR"/artifacts/dist-linux-x64/tarminal-*.rpm.asc rpm/x86_64/ 2>/dev/null || true
+
+          prune_package_files 5 './rpm/x86_64/tar-install-*.rpm'
+          prune_package_files 5 './rpm/x86_64/tarminal-*.rpm'
 
           createrepo_c rpm/x86_64
 
@@ -989,12 +1011,20 @@ jobs:
 
           # Alpine APK, Void XBPS, and the Arch pacman repo are already built
           # and signed inside their own jobs (abuild key, xbps-rindex RSA
-          # key, and the same GPG key respectively) — this step only copies
-          # the finished repo trees into place.
+          # key, and the same GPG key respectively) — this step copies the
+          # finished repo trees into place while preserving older packages
+          # from the shared packages.tamkungz.me repo.
           mkdir -p apk xbps arch
           cp -r "$WORK_DIR"/artifacts/dist-alpine-apk/apk/. apk/
           cp -r "$WORK_DIR"/artifacts/dist-void-xbps/xbps/. xbps/
           cp -r "$WORK_DIR"/artifacts/dist-arch-pkgbuild/arch/. arch/
+
+          prune_package_files 5 './apk/*/tar-install-*.apk'
+          prune_package_files 5 './apk/*/tarminal-*.apk'
+          prune_package_files 5 './xbps/*/tar-install-*.xbps'
+          prune_package_files 5 './xbps/*/tarminal-*.xbps'
+          prune_package_files 5 './arch/*/tar-install-*.pkg.tar.zst'
+          prune_package_files 5 './arch/*/tarminal-*.pkg.tar.zst'
 
           if [ -f scripts/build_site.py ]; then
             python3 scripts/build_site.py
