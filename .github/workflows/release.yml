@@ -900,9 +900,13 @@ jobs:
           echo "packages.tamkungz.me" > CNAME
           touch .nojekyll
 
-          rm -rf apt rpm apk xbps arch
-
           gpg --armor --export "$GPG_FINGERPRINT" > gpg.key
+
+          rm -rf apt/pool/main/t/tar-install apt/pool/main/t/tarminal apps/tarminal
+          find rpm -type f \( -name 'tar-install-*.rpm' -o -name 'tarminal-*.rpm' \) -delete 2>/dev/null || true
+          find apk -type f \( -name 'tar-install-*.apk' -o -name 'tarminal-*.apk' \) -delete 2>/dev/null || true
+          find xbps -type f \( -name 'tar-install-*.xbps' -o -name 'tarminal-*.xbps' \) -delete 2>/dev/null || true
+          find arch -type f \( -name 'tar-install-*.pkg.tar.zst' -o -name 'tarminal-*.pkg.tar.zst' \) -delete 2>/dev/null || true
 
           mkdir -p apt/pool/main/t/tar-install
           mkdir -p apt/pool/main/t/tarminal
